@@ -93,7 +93,20 @@ app.use('/api/countries', countryRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/reservation', reservationRoutes);
 
-// 404 handler
+// Serve static frontend files in production
+if (process.env.NODE_ENV === 'production') {
+  const path = require('path');
+  
+  // Serve static files from public_html (parent of backend)
+  app.use(express.static(path.join(__dirname, '..', 'public_html')));
+  
+  // Serve index.html for all non-API routes (SPA support)
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, '..', 'public_html', 'index.html'));
+  });
+}
+
+// 404 handler for API routes
 app.use((req, res) => {
   res.status(404).json({ 
     success: false, 

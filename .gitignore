@@ -39,6 +39,7 @@ tmp/
 *.sql
 !backend/schema.sql
 !backend/migrate-cash-gap.sql
+!backend/schema-mysql.sql
 
 # Test coverage
 coverage/

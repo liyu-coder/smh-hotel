@@ -37,6 +37,21 @@ interface Dashboard {
     name: string;
     commission_rate: number;
   } | null;
+  prev_plan_completed?: boolean;
+  plan_progress?: {
+    plan1_completed: boolean;
+    plan2_completed: boolean;
+    plan3_completed: boolean;
+    plan4_completed: boolean;
+  };
+  all_plans?: Array<{
+    id: number;
+    name: string;
+    min_amount: number;
+    max_amount: number;
+    commission_rate: number;
+    daily_task_limit: number;
+  }>;
 }
 
 export function Tasks() {
@@ -222,6 +237,51 @@ export function Tasks() {
                 transition={{ duration: 0.45 }}
               />
             </div>
+          </div>
+        )}
+
+        {/* Plan Progress Section */}
+        {dashboard?.plan_progress && (
+          <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 mb-6">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-sm font-medium text-gray-700">Plan Progress</span>
+              <span className="text-xs text-gray-500">Complete 25 tasks per plan to unlock next</span>
+            </div>
+            <div className="grid grid-cols-4 gap-2">
+              {[
+                { key: 'plan1_completed', name: 'Plan 1', color: 'from-gray-400 to-gray-500' },
+                { key: 'plan2_completed', name: 'Plan 2', color: 'from-yellow-400 to-yellow-500' },
+                { key: 'plan3_completed', name: 'Plan 3', color: 'from-orange-400 to-orange-500' },
+                { key: 'plan4_completed', name: 'Plan 4', color: 'from-red-400 to-red-500' },
+              ].map((plan) => {
+                const isCompleted = dashboard.plan_progress?.[plan.key as keyof typeof dashboard.plan_progress];
+                return (
+                  <div key={plan.key} className="text-center">
+                    <div className={`w-10 h-10 mx-auto rounded-full flex items-center justify-center mb-1 ${
+                      isCompleted 
+                        ? `bg-gradient-to-br ${plan.color} text-white` 
+                        : 'bg-gray-100 text-gray-400'
+                    }`}>
+                      {isCompleted ? (
+                        <CheckCircle className="w-5 h-5" />
+                      ) : (
+                        <span className="text-xs font-bold">{plan.name.replace('Plan ', '')}</span>
+                      )}
+                    </div>
+                    <span className={`text-xs ${isCompleted ? 'text-green-600 font-medium' : 'text-gray-400'}`}>
+                      {isCompleted ? '✓ Done' : 'Locked'}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+            {dashboard.current_plan && (
+              <div className="mt-3 p-2 bg-blue-50 rounded-lg text-center">
+                <span className="text-sm text-blue-700">
+                  Current: <strong>{dashboard.current_plan.name}</strong> ({(dashboard.current_plan.commission_rate * 100).toFixed(0)}% commission)
+                </span>
+              </div>
+            )}
           </div>
         )}
       </div>

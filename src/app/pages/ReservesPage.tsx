@@ -84,7 +84,7 @@ export function ReservesPage() {
               <p className="text-sm text-gray-600" style={{ fontFamily: 'Inter' }}>
                 {countryParam 
                   ? `Exclusive properties in ${countryParam}` 
-                  : 'Complete your 25 daily reserves'}
+                  : 'Browse hotels by level - reservations admin-controlled'}
               </p>
             </div>
           </div>
@@ -157,7 +157,7 @@ export function ReservesPage() {
         >
           <div className="flex items-center justify-between mb-3">
             <span className="text-sm font-medium text-gray-700" style={{ fontFamily: 'Montserrat' }}>
-              Daily Reserve Progress
+              Daily Task Progress
             </span>
             <span className="text-sm text-[#D4AF37] font-bold" style={{ fontFamily: 'Inter' }}>
               {walletData.todayOrders} of {walletData.maxDailyOrders} completed
@@ -173,7 +173,7 @@ export function ReservesPage() {
           </div>
           {!walletData.tasksCompleted && (
             <div className="mt-3 text-sm text-gray-600" style={{ fontFamily: 'Inter' }}>
-              Complete {walletData.maxDailyOrders - walletData.todayOrders} more reserves to unlock withdrawals
+              Complete {walletData.maxDailyOrders - walletData.todayOrders} more tasks to unlock next plan level
             </div>
           )}
         </motion.div>
@@ -187,7 +187,7 @@ export function ReservesPage() {
         >
           <Info className="w-5 h-5 text-amber-600 flex-shrink-0" />
           <p className="text-sm text-amber-700" style={{ fontFamily: 'Inter' }}>
-            Find a hotel below to complete your 25 daily reserves. Each reservation earns commission and progresses you toward unlocking withdrawals.
+            Complete your daily tasks in the Tasks page. Admin controls all reservations based on your task completion and plan level. Finish Plan 1 tasks to unlock Plan 2, then Plan 3, then Plan 4.
           </p>
         </motion.div>
 
@@ -290,22 +290,10 @@ export function ReservesPage() {
                         </div>
                         <div className="text-xs text-gray-500">per night</div>
                       </div>
-                      <motion.button
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleReserve(hotel);
-                        }}
-                        disabled={walletData.todayOrders >= walletData.maxDailyOrders}
-                        className="px-6 py-3 rounded-xl font-semibold text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        style={{
-                          backgroundColor: '#D4AF37',
-                          fontFamily: 'Montserrat'
-                        }}
-                      >
-                        Reserve Now
-                      </motion.button>
+                      <div className="px-4 py-2 bg-gray-100 rounded-lg text-xs text-gray-600 text-center">
+                        <div className="font-medium">Admin Controlled</div>
+                        <div className="text-[10px]">Complete tasks to unlock</div>
+                      </div>
                     </div>
                   </div>
                 </motion.div>

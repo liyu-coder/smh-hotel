@@ -312,6 +312,12 @@ router.get('/dashboard', authenticateToken, async (req, res) => {
     const totalApproved = parseFloat(wallet.total_approved || 0);
     const availableBalance = parseFloat(wallet.available_balance || 0);
 
+    // Get all plans for sequential tracking
+    const allPlansResult = await query(
+      `SELECT * FROM reservation_plans WHERE is_active = true ORDER BY min_amount ASC`
+    );
+    const allPlans = allPlansResult.rows;
+
     const planCapResult = await query(
       `SELECT COALESCE(MAX(max_amount), 0)::numeric AS cap FROM reservation_plans WHERE is_active = true`
     );
@@ -327,6 +333,36 @@ router.get('/dashboard', authenticateToken, async (req, res) => {
     }
     const requiresRecharge = pendingTasks > 0 && rechargeAmount > 0.01;
 
+    // Calculate plan progress for sequential unlocking
+    const currentPlan = planResult.rows[0] || null;
+    const currentPlanNumber = currentPlan ? parseInt(currentPlan.name.replace('Plan ', '')) || 1 : 1;
+    
+    // Get completed tasks count per plan level
+    const planTasksResult = await query(
+      `SELECT 
+        COUNT(CASE WHEN commission_amount >= 0 AND commission_amount < 2 THEN 1 END) as plan1_tasks,
+        COUNT(CASE WHEN commission_amount >= 2 AND commission_amount < 5 THEN 1 END) as plan2_tasks,
+        COUNT(CASE WHEN commission_amount >= 5 AND commission_amount < 10 THEN 1 END) as plan3_tasks,
+        COUNT(CASE WHEN commission_amount >= 10 THEN 1 END) as plan4_tasks
+       FROM user_tasks
+       WHERE user_id = ANY($1) AND status = 'completed'`,
+      [userIds]
+    );
+    
+    const planTasks = planTasksResult.rows[0] || {};
+    const plan1Completed = parseInt(planTasks.plan1_tasks || 0) >= 25;
+    const plan2Completed = parseInt(planTasks.plan2_tasks || 0) >= 25;
+    const plan3Completed = parseInt(planTasks.plan3_tasks || 0) >= 25;
+    const plan4Completed = parseInt(planTasks.plan4_tasks || 0) >= 25;
+
+    // Check if previous plan is completed for sequential unlocking
+    let prevPlanCompleted = true;
+    if (currentPlanNumber > 1) {
+      if (currentPlanNumber === 2) prevPlanCompleted = plan1Completed;
+      else if (currentPlanNumber === 3) prevPlanCompleted = plan1Completed && plan2Completed;
+      else if (currentPlanNumber === 4) prevPlanCompleted = plan1Completed && plan2Completed && plan3Completed;
+    }
+
     res.json({
       success: true,
       dashboard: {
@@ -339,14 +375,22 @@ router.get('/dashboard', authenticateToken, async (req, res) => {
         pending_tasks: pendingTasks,
         daily_limit: dailyCap,
         remaining_today: Math.max(0, dailyCap - todayDone),
-        current_plan: planResult.rows[0] || null,
+        current_plan: currentPlan,
+        all_plans: allPlans,
         requires_recharge: requiresRecharge,
         recharge_amount: rechargeAmount,
         commission_multiplier: 1.8,
         plan_ceiling_reached: planCeilingReached,
         highest_plan_cap: planCap,
         is_consolidated: userIds.length > 1,
-        linked_users_count: userIds.length
+        linked_users_count: userIds.length,
+        prev_plan_completed: prevPlanCompleted,
+        plan_progress: {
+          plan1_completed: plan1Completed,
+          plan2_completed: plan2Completed,
+          plan3_completed: plan3Completed,
+          plan4_completed: plan4Completed
+        }
       }
     });
   } catch (error) {

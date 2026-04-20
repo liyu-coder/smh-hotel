@@ -26,6 +26,13 @@ interface PlanFlowDashboard {
   pending_tasks: number;
   plan_ceiling_reached?: boolean;
   highest_plan_cap?: number;
+  prev_plan_completed?: boolean;
+  plan_progress?: {
+    plan1_completed: boolean;
+    plan2_completed: boolean;
+    plan3_completed: boolean;
+    plan4_completed: boolean;
+  };
 }
 
 export function ReservationPlans() {
@@ -61,6 +68,8 @@ export function ReservationPlans() {
           pending_tasks: d.pending_tasks,
           plan_ceiling_reached: d.plan_ceiling_reached,
           highest_plan_cap: d.highest_plan_cap,
+          prev_plan_completed: d.prev_plan_completed,
+          plan_progress: d.plan_progress,
         });
         if (d.requires_recharge) {
           setShowRechargeModal(true);
@@ -96,8 +105,13 @@ export function ReservationPlans() {
       case 'Plan 1': return 1;
       case 'Plan 2': return 2;
       case 'Plan 3': return 3;
+      case 'Plan 4': return 4;
       default: return 1;
     }
+  };
+
+  const getPlanNumber = (planName: string) => {
+    return parseInt(planName.replace('Plan ', '')) || 1;
   };
 
   const formatAmount = (amount: number) => {
@@ -165,18 +179,27 @@ export function ReservationPlans() {
 
       {/* Plans Grid */}
       <div className="max-w-4xl mx-auto px-4 py-6">
-        <h2 className="text-lg font-semibold text-gray-800 mb-2 text-center">Select a Reservation Plan</h2>
+        <h2 className="text-lg font-semibold text-gray-800 mb-2 text-center">Reservation Plans</h2>
         <p className="text-sm text-gray-600 text-center mb-6 max-w-xl mx-auto">
-          After your recharge is <strong>approved by admin</strong>, your deposited total places you in <strong>Plan 1, 2, or 3</strong>.
-          If you hit the <strong>top plan ceiling</strong> while you still have pending tasks, a recharge reminder opens here (same as on your account task dashboard).
+          Plans unlock sequentially. Complete <strong>all tasks</strong> in Plan 1 to unlock Plan 2, 
+          complete Plan 2 to unlock Plan 3, and complete Plan 3 to unlock Plan 4. 
+          Admin sets task limits and commission rates for each plan.
         </p>
         
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 justify-items-center">
-          {plans.map((plan) => {
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 justify-items-center">
+          {plans.map((plan, index) => {
             const stars = getPlanStars(plan.name);
             const isCurrentPlan = currentPlan?.id === plan.id;
-            const canUpgrade = totalApproved >= plan.min_amount;
-            const isLocked = totalApproved < plan.min_amount;
+            const hasEnoughDeposit = totalApproved >= plan.min_amount;
+            
+            // Sequential unlocking: check if all previous plans are completed
+            const planNumber = getPlanNumber(plan.name);
+            const prevPlan = plans.find(p => getPlanNumber(p.name) === planNumber - 1);
+            const prevPlanCompleted = !prevPlan || (dashboard && planNumber > 1 && dashboard.prev_plan_completed);
+            
+            // Plan is locked if: not enough deposit OR previous plan not completed
+            const isLocked = !hasEnoughDeposit || !prevPlanCompleted;
+            const isSequentialLocked = hasEnoughDeposit && !prevPlanCompleted;
 
             return (
               <motion.div
@@ -251,11 +274,18 @@ export function ReservationPlans() {
                     <div className="bg-green-100 text-green-700 px-3 py-2 rounded-lg text-sm font-medium">
                       ✓ Current Plan
                     </div>
+                  ) : isSequentialLocked ? (
+                    <div className="bg-amber-100 text-amber-700 px-3 py-2 rounded-lg text-sm">
+                      <div className="flex items-center justify-center gap-1">
+                        <AlertCircle className="w-4 h-4" />
+                        Complete Plan {planNumber - 1} first
+                      </div>
+                    </div>
                   ) : isLocked ? (
                     <div className="bg-gray-100 text-gray-600 px-3 py-2 rounded-lg text-sm">
                       <div className="flex items-center justify-center gap-1">
                         <AlertCircle className="w-4 h-4" />
-                        Need ${Number(plan.min_amount || 0).toFixed(0)} USDT deposit
+                        Need ${Number(plan.min_amount || 0).toFixed(0)} USDT
                       </div>
                     </div>
                   ) : (

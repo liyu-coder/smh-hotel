@@ -43,26 +43,13 @@ export function HotelPackages() {
   const { user } = useAuth();
   
   // Load search data from Home page
-  const [searchData, setSearchData] = useState(() => {
-    try {
-      const saved = localStorage.getItem('searchData');
-      return saved ? JSON.parse(saved) : {
-        location: '',
-        checkIn: '',
-        checkOut: '',
-        guests: 2
-      };
-    } catch (error) {
-      console.error('Error loading search data:', error);
-      return {
-        location: '',
-        checkIn: '',
-        checkOut: '',
-        guests: 2
-      };
-    }
+  const [searchData, setSearchData] = useState({
+    location: '',
+    checkIn: '',
+    checkOut: '',
+    guests: 2
   });
-  
+
   const [searchTerm, setSearchTerm] = useState(searchData.location || '');
   const [selectedLocation, setSelectedLocation] = useState(searchData.location || 'All Locations');
   const [selectedPriceRange, setSelectedPriceRange] = useState('All Prices');
@@ -77,27 +64,16 @@ export function HotelPackages() {
   }, [searchData]);
 
   useEffect(() => {
-    try {
-      // Load favorites from localStorage
-      const savedFavorites = JSON.parse(localStorage.getItem('favorites') || '[]');
-      setFavorites(savedFavorites);
-    } catch (error) {
-      console.error('Error loading favorites:', error);
-      setFavorites([]);
-    }
+    // Favorites will be loaded from database in a real implementation
   }, []);
 
   const toggleFavorite = (hotelId: number) => {
-    try {
-      const newFavorites = favorites.includes(hotelId)
-        ? favorites.filter(id => id !== hotelId)
-        : [...favorites, hotelId];
-      
-      setFavorites(newFavorites);
-      localStorage.setItem('favorites', JSON.stringify(newFavorites));
-    } catch (error) {
-      console.error('Error saving favorites:', error);
-    }
+    const newFavorites = favorites.includes(hotelId)
+      ? favorites.filter(id => id !== hotelId)
+      : [...favorites, hotelId];
+
+    setFavorites(newFavorites);
+    // In a real app, this would be saved to the database via API
   };
 
   const filteredHotels = hotels.filter((hotel: Hotel) => {

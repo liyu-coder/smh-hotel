@@ -13,37 +13,35 @@ router.get('/', authenticateToken, async (req, res) => {
     const status = req.query.status;
     const category = req.query.category;
 
-    let queryText = 'SELECT * FROM support_tickets WHERE user_id = $1';
+    let queryText = 'SELECT * FROM support_tickets WHERE user_id = ?';
     const params = [req.user.userId];
-    let paramCount = 2;
 
     if (status) {
-      queryText += ` AND status = $${paramCount++}`;
+      queryText += ' AND status = ?';
       params.push(status);
     }
 
     if (category) {
-      queryText += ` AND category = $${paramCount++}`;
+      queryText += ' AND category = ?';
       params.push(category);
     }
 
-    queryText += ` ORDER BY created_at DESC LIMIT $${paramCount++} OFFSET $${paramCount++}`;
+    queryText += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
     params.push(limit, offset);
 
     const result = await query(queryText, params);
 
     // Get total count
-    let countQuery = 'SELECT COUNT(*) FROM support_tickets WHERE user_id = $1';
+    let countQuery = 'SELECT COUNT(*) FROM support_tickets WHERE user_id = ?';
     const countParams = [req.user.userId];
-    let countParamCount = 2;
 
     if (status) {
-      countQuery += ` AND status = $${countParamCount++}`;
+      countQuery += ' AND status = ?';
       countParams.push(status);
     }
 
     if (category) {
-      countQuery += ` AND category = $${countParamCount++}`;
+      countQuery += ' AND category = ?';
       countParams.push(category);
     }
 
@@ -76,7 +74,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
       `SELECT st.*, u.name as user_name, u.email as user_email
       FROM support_tickets st
       JOIN users u ON st.user_id = u.id
-      WHERE st.id = $1 AND st.user_id = $2`,
+      WHERE st.id = ? AND st.user_id = ?`,
       [req.params.id, req.user.userId]
     );
 
@@ -117,11 +115,14 @@ router.post('/', authenticateToken, [
 
     const { subject, message, category, priority } = req.body;
 
-    const result = await query(
+    await query(
       `INSERT INTO support_tickets (user_id, subject, message, category, priority)
-      VALUES ($1, $2, $3, $4, $5)
-      RETURNING *`,
+      VALUES (?, ?, ?, ?, ?)`,
       [req.user.userId, subject, message, category || 'general', priority || 'normal']
+    );
+
+    const result = await query(
+      'SELECT * FROM support_tickets WHERE id = LAST_INSERT_ID()'
     );
 
     res.status(201).json({
@@ -155,24 +156,23 @@ router.get('/admin/all', authenticateToken, authorize('admin', 'super_admin'), a
       WHERE 1=1
     `;
     const params = [];
-    let paramCount = 1;
 
     if (status) {
-      queryText += ` AND st.status = $${paramCount++}`;
+      queryText += ' AND st.status = ?';
       params.push(status);
     }
 
     if (category) {
-      queryText += ` AND st.category = $${paramCount++}`;
+      queryText += ' AND st.category = ?';
       params.push(category);
     }
 
     if (priority) {
-      queryText += ` AND st.priority = $${paramCount++}`;
+      queryText += ' AND st.priority = ?';
       params.push(priority);
     }
 
-    queryText += ` ORDER BY st.priority DESC, st.created_at DESC LIMIT $${paramCount++} OFFSET $${paramCount++}`;
+    queryText += ' ORDER BY st.created_at DESC LIMIT ? OFFSET ?';
     params.push(limit, offset);
 
     const result = await query(queryText, params);
@@ -180,20 +180,19 @@ router.get('/admin/all', authenticateToken, authorize('admin', 'super_admin'), a
     // Get total count
     let countQuery = 'SELECT COUNT(*) FROM support_tickets WHERE 1=1';
     const countParams = [];
-    let countParamCount = 1;
 
     if (status) {
-      countQuery += ` AND status = $${countParamCount++}`;
+      countQuery += ' AND status = ?';
       countParams.push(status);
     }
 
     if (category) {
-      countQuery += ` AND category = $${countParamCount++}`;
+      countQuery += ' AND category = ?';
       countParams.push(category);
     }
 
     if (priority) {
-      countQuery += ` AND priority = $${countParamCount++}`;
+      countQuery += ' AND priority = ?';
       countParams.push(priority);
     }
 
@@ -222,7 +221,7 @@ router.get('/admin/all', authenticateToken, authorize('admin', 'super_admin'), a
 // Admin: Update support ticket status
 router.put('/:id/status', authenticateToken, authorize('admin', 'super_admin'), async (req, res) => {
   try {
-    const { status, admin_response } = req.body;
+    const { status, admin_note, resolution } = req.body;
 
     if (!['open', 'in_progress', 'resolved', 'closed'].includes(status)) {
       return res.status(400).json({ 
@@ -231,25 +230,29 @@ router.put('/:id/status', authenticateToken, authorize('admin', 'super_admin'), 
       });
     }
 
-    const updates = ['status = $1', 'updated_at = CURRENT_TIMESTAMP'];
+    const updates = ['status = ?', 'updated_at = CURRENT_TIMESTAMP'];
     const values = [status];
-    let paramCount = 2;
 
-    if (admin_response) {
-      updates.push(`admin_response = $${paramCount++}`);
-      values.push(admin_response);
+    if (admin_note) {
+      updates.push('admin_note = ?');
+      values.push(admin_note);
     }
 
-    if (status === 'resolved' || status === 'closed') {
-      updates.push(`resolved_at = $${paramCount++}`);
-      values.push(new Date());
+    if (resolution) {
+      updates.push('resolution = ?');
+      values.push(resolution);
     }
 
     values.push(req.params.id);
 
-    const result = await query(
-      `UPDATE support_tickets SET ${updates.join(', ')} WHERE id = $${paramCount} RETURNING *`,
+    await query(
+      `UPDATE support_tickets SET ${updates.join(', ')} WHERE id = ?`,
       values
+    );
+
+    const result = await query(
+      'SELECT * FROM support_tickets WHERE id = ?',
+      [req.params.id]
     );
 
     if (result.rows.length === 0) {

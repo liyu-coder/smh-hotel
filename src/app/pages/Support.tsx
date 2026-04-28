@@ -20,7 +20,7 @@ export function Support() {
       action: 'Open Telegram',
       available: '24/7',
       color: '#0088cc',
-      link: 'https://t.me/Luwa307'
+      link: 'https://t.me/Customer_support24hours'
     },
     {
       title: 'Email Support',
@@ -82,7 +82,7 @@ export function Support() {
 
   const handleTelegramSupport = () => {
     // Open Telegram with the specified username
-    window.open('https://t.me/Luwa307', '_blank');
+    window.open('https://t.me/Customer_support24hours', '_blank');
   };
 
   if (showSuccess) {

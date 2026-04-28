@@ -1,19 +1,19 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router';
 import { motion } from 'motion/react';
-import { 
-  ArrowLeft, 
-  Star, 
-  MapPin, 
-  Wifi, 
-  Car, 
-  Coffee, 
-  Dumbbell, 
-  Check, 
-  Heart, 
-  Calendar, 
-  Users, 
-  ChevronLeft, 
+import {
+  ArrowLeft,
+  Star,
+  MapPin,
+  Wifi,
+  Car,
+  Coffee,
+  Dumbbell,
+  Check,
+  Heart,
+  Calendar,
+  Users,
+  ChevronLeft,
   ChevronRight,
   Phone,
   Globe,
@@ -21,6 +21,7 @@ import {
   Clock
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { bookingsApi, hotelsApi } from '../lib/api';
 
 interface Hotel {
   id: number;
@@ -146,7 +147,7 @@ const hotelsData: Hotel[] = [
 ];
 
 export function HotelDetails() {
-  const { id } = useParams<{ id: string }();
+  const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
   
@@ -160,22 +161,49 @@ export function HotelDetails() {
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    const hotelId = parseInt(id || '0');
-    const foundHotel = hotelsData.find(h => h.id === hotelId);
-    setHotel(foundHotel || null);
-    
-    if (foundHotel) {
-      setSelectedRoom(foundHotel.rooms[0]);
-      
-      // Save to recently viewed
-      const recentlyViewed = JSON.parse(localStorage.getItem('recentlyViewed') || '[]');
-      const updated = [foundHotel.id, ...recentlyViewed.filter((id: number) => id !== foundHotel.id)].slice(0, 10);
-      localStorage.setItem('recentlyViewed', JSON.stringify(updated));
-      
-      // Check if favorite
-      const favorites = JSON.parse(localStorage.getItem('favorites') || '[]');
-      setIsFavorite(favorites.includes(foundHotel.id));
-    }
+    const fetchHotel = async () => {
+      if (!id) return;
+
+      try {
+        const response = await hotelsApi.getHotel(id);
+        if (response.success && response.hotel) {
+          const hotelData = {
+            id: response.hotel.id,
+            name: response.hotel.name,
+            location: `${response.hotel.city}, ${response.hotel.country}`,
+            rating: response.hotel.rating || 4.5,
+            price: response.hotel.price_per_night || response.hotel.price || 0,
+            image: response.hotel.image_url || response.hotel.image || 'https://images.unsplash.com/photo-1566073771259-4a9604499b0a?w=800&h=600&fit=crop',
+            amenities: Array.isArray(response.hotel.amenities) ? response.hotel.amenities : [],
+            rooms: ['Standard Room', 'Deluxe Suite', 'Executive Room'],
+            description: response.hotel.description || 'Luxury hotel with excellent amenities and services.',
+            phone: '+1 (555) 000-0000',
+            website: 'www.hotel.com',
+            checkInTime: '3:00 PM',
+            checkOutTime: '11:00 AM',
+            cancellationPolicy: 'Free cancellation up to 24 hours before check-in',
+            reviews: Math.floor(Math.random() * 500) + 100
+          };
+          setHotel(hotelData);
+          setSelectedRoom(hotelData.rooms[0]);
+        } else {
+          // Fallback to mock data if API fails
+          const hotelIndex = (parseInt(id) - 1) % hotelsData.length;
+          const mockHotel = hotelsData[hotelIndex] || hotelsData[0];
+          setHotel({ ...mockHotel, id: parseInt(id) }); // Use the requested ID but with mock data
+          setSelectedRoom(mockHotel.rooms[0]);
+        }
+      } catch (error) {
+        console.error('Error fetching hotel:', error);
+        // Fallback to mock data using modulo
+        const hotelIndex = (parseInt(id) - 1) % hotelsData.length;
+        const mockHotel = hotelsData[hotelIndex] || hotelsData[0];
+        setHotel({ ...mockHotel, id: parseInt(id) });
+        setSelectedRoom(mockHotel.rooms[0]);
+      }
+    };
+
+    fetchHotel();
   }, [id]);
 
   const handleBookNow = async () => {
@@ -224,33 +252,37 @@ export function HotelDetails() {
     );
 
     if (confirmBooking) {
-      // Save booking
-      const existingBookings = JSON.parse(localStorage.getItem('userBookings') || '[]');
-      existingBookings.push(bookingDetails);
-      localStorage.setItem('userBookings', JSON.stringify(existingBookings));
-      
-      alert(`Booking Confirmed!\n\nBooking Reference: ${bookingDetails.bookingReference}\nTotal: $${totalPrice}\n\nRedirecting to your reservations...`);
-      
-      setTimeout(() => {
-        navigate('/bookings');
-      }, 1500);
+      try {
+        // Save booking to database via API
+        const response = await bookingsApi.createBooking({
+          hotel_id: hotel?.id || 0,
+          check_in_date: checkIn,
+          check_out_date: checkOut,
+          guests: guests,
+          special_requests: `Room: ${selectedRoom}, Price: $${hotel?.price}/night, Total: $${totalPrice} for ${nights} nights`
+        });
+
+        if (response.success) {
+          alert(`Booking Confirmed!\n\nBooking Reference: ${bookingDetails.bookingReference}\nTotal: $${totalPrice}\n\nRedirecting to your reservations...`);
+          
+          setTimeout(() => {
+            navigate('/bookings');
+          }, 1500);
+        } else {
+          alert('Failed to create booking: ' + (response.message || 'Unknown error'));
+        }
+      } catch (error: any) {
+        console.error('Booking error:', error);
+        alert('Error creating booking: ' + (error.message || 'Network error'));
+      }
     }
 
     setIsLoading(false);
   };
 
   const toggleFavorite = () => {
-    const favorites = JSON.parse(localStorage.getItem('favorites') || '[]');
-    
-    if (isFavorite) {
-      const updated = favorites.filter((id: number) => id !== hotel?.id);
-      localStorage.setItem('favorites', JSON.stringify(updated));
-      setIsFavorite(false);
-    } else {
-      favorites.push(hotel?.id || 0);
-      localStorage.setItem('favorites', JSON.stringify(favorites));
-      setIsFavorite(true);
-    }
+    setIsFavorite(!isFavorite);
+    // In a real app, this would be saved to the database via API
   };
 
   const nextImage = () => {
@@ -547,19 +579,11 @@ export function HotelDetails() {
               <motion.button
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
-                onClick={handleBookNow}
-                disabled={isLoading}
-                className="w-full mt-6 py-3 rounded-lg font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                onClick={() => navigate('/plans')}
+                className="w-full mt-6 py-3 rounded-lg font-semibold text-white flex items-center justify-center gap-2"
                 style={{ backgroundColor: '#D4AF37' }}
               >
-                {isLoading ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    Booking...
-                  </>
-                ) : (
-                  'Book Now'
-                )}
+                Reserve Now
               </motion.button>
 
               {!user && (

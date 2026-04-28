@@ -91,46 +91,11 @@ const countryQueryMap: Record<string, string> = {
   'Tunisia': 'Tunis Tunisia',
   'Ghana': 'Accra Ghana',
   'Nigeria': 'Lagos Nigeria',
-  'Senegal': 'Dakar Senegal'
+  'Senegal': 'Dakar Senegal',
+  'Mauritius': 'Port Louis Mauritius'
 };
 
 const FALLBACK_IMAGE = 'https://images.pexels.com/photos/414171/pexels-photo-414171.jpeg';
-
-// Get cached images from localStorage
-function getCachedImages(): Record<string, CachedImage> {
-  try {
-    const cached = localStorage.getItem(CACHE_KEY);
-    if (cached) {
-      const parsed = JSON.parse(cached);
-      // Filter out expired cache entries
-      const now = Date.now();
-      const filtered: Record<string, CachedImage> = {};
-      Object.keys(parsed).forEach(key => {
-        if (now - parsed[key].timestamp < CACHE_DURATION) {
-          filtered[key] = parsed[key];
-        }
-      });
-      return filtered;
-    }
-  } catch (error) {
-    console.error('Error reading cache:', error);
-  }
-  return {};
-}
-
-// Save cached images to localStorage
-function setCachedImage(country: string, url: string): void {
-  try {
-    const cached = getCachedImages();
-    cached[country] = {
-      url,
-      timestamp: Date.now()
-    };
-    localStorage.setItem(CACHE_KEY, JSON.stringify(cached));
-  } catch (error) {
-    console.error('Error saving cache:', error);
-  }
-}
 
 // Fetch country image from Pexels API
 async function fetchFromPexels(query: string): Promise<string> {
@@ -174,48 +139,26 @@ async function fetchFromPexels(query: string): Promise<string> {
 
 // Main function to get country image
 export async function getCountryImage(country: string): Promise<string> {
-  // Check cache first
-  const cached = getCachedImages();
-  if (cached[country]) {
-    return cached[country].url;
-  }
-
   // Get optimized query
   const query = countryQueryMap[country] || `${country} landscape`;
-  
+
   // Fetch from Pexels
   const imageUrl = await fetchFromPexels(query);
-  
-  // Cache the result
-  setCachedImage(country, imageUrl);
-  
+
   return imageUrl;
 }
 
 // Batch fetch multiple country images
 export async function getCountryImages(countries: string[]): Promise<Record<string, string>> {
   const results: Record<string, string> = {};
-  const cached = getCachedImages();
-  
-  // Use cached images where available
-  const toFetch: string[] = [];
-  
-  countries.forEach(country => {
-    if (cached[country]) {
-      results[country] = cached[country].url;
-    } else {
-      toFetch.push(country);
-    }
-  });
-  
-  // Fetch remaining images
-  const fetchPromises = toFetch.map(async (country) => {
+
+  // Fetch all images from Pexels
+  const fetchPromises = countries.map(async (country) => {
     const query = countryQueryMap[country] || `${country} landscape`;
     const imageUrl = await fetchFromPexels(query);
-    setCachedImage(country, imageUrl);
     results[country] = imageUrl;
   });
-  
+
   await Promise.all(fetchPromises);
   
   return results;
@@ -275,120 +218,24 @@ export async function getPexelsImage(query: string, perPage: number = 1): Promis
 
 // Get featured properties images
 export async function getFeaturedProperties(): Promise<string[]> {
-  const CACHE_KEY_FEATURED = 'pexels_featured_properties';
-  const cached = localStorage.getItem(CACHE_KEY_FEATURED);
-
-  if (cached) {
-    try {
-      const { data, timestamp } = JSON.parse(cached);
-      if (Date.now() - timestamp < CACHE_DURATION) {
-        return data;
-      }
-    } catch (error) {
-      console.error('Error reading featured properties cache:', error);
-    }
-  }
-
   const images = await getPexelsImage('luxury hotel resort', 6);
-
-  try {
-    localStorage.setItem(CACHE_KEY_FEATURED, JSON.stringify({
-      data: images,
-      timestamp: Date.now()
-    }));
-  } catch (error) {
-    console.error('Error caching featured properties:', error);
-  }
-
   return images;
 }
 
 // Get browse destinations images
 export async function getBrowseDestinations(): Promise<string[]> {
-  const CACHE_KEY_DESTINATIONS = 'pexels_browse_destinations';
-  const cached = localStorage.getItem(CACHE_KEY_DESTINATIONS);
-
-  if (cached) {
-    try {
-      const { data, timestamp } = JSON.parse(cached);
-      if (Date.now() - timestamp < CACHE_DURATION) {
-        return data;
-      }
-    } catch (error) {
-      console.error('Error reading destinations cache:', error);
-    }
-  }
-
   const images = await getPexelsImage('travel destinations world', 8);
-
-  try {
-    localStorage.setItem(CACHE_KEY_DESTINATIONS, JSON.stringify({
-      data: images,
-      timestamp: Date.now()
-    }));
-  } catch (error) {
-    console.error('Error caching destinations:', error);
-  }
-
   return images;
 }
 
 // Get experience images
 export async function getExperienceImages(count: number = 6): Promise<string[]> {
-  const CACHE_KEY_EXPERIENCES = 'pexels_experiences';
-  const cached = localStorage.getItem(CACHE_KEY_EXPERIENCES);
-
-  if (cached) {
-    try {
-      const { data, timestamp } = JSON.parse(cached);
-      if (Date.now() - timestamp < CACHE_DURATION) {
-        return data;
-      }
-    } catch (error) {
-      console.error('Error reading experiences cache:', error);
-    }
-  }
-
   const images = await getPexelsImage('travel adventure experience', count);
-
-  try {
-    localStorage.setItem(CACHE_KEY_EXPERIENCES, JSON.stringify({
-      data: images,
-      timestamp: Date.now()
-    }));
-  } catch (error) {
-    console.error('Error caching experiences:', error);
-  }
-
   return images;
 }
 
 // Get profile images for testimonials
 export async function getProfileImages(count: number = 10): Promise<string[]> {
-  const CACHE_KEY_PROFILES = 'pexels_profiles';
-  const cached = localStorage.getItem(CACHE_KEY_PROFILES);
-
-  if (cached) {
-    try {
-      const { data, timestamp } = JSON.parse(cached);
-      if (Date.now() - timestamp < CACHE_DURATION) {
-        return data;
-      }
-    } catch (error) {
-      console.error('Error reading profiles cache:', error);
-    }
-  }
-
   const images = await getPexelsImage('person portrait professional', count);
-
-  try {
-    localStorage.setItem(CACHE_KEY_PROFILES, JSON.stringify({
-      data: images,
-      timestamp: Date.now()
-    }));
-  } catch (error) {
-    console.error('Error caching profiles:', error);
-  }
-
   return images;
 }

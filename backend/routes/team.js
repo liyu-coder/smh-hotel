@@ -12,7 +12,7 @@ router.get('/', authenticateToken, async (req, res) => {
         (SELECT name FROM users WHERE id = tm.referred_by) as referred_by_name
       FROM team_members tm
       JOIN users u ON tm.user_id = u.id
-      WHERE tm.user_id = $1`,
+      WHERE tm.user_id = ?`,
       [req.user.userId]
     );
 
@@ -20,7 +20,7 @@ router.get('/', authenticateToken, async (req, res) => {
       // Create team member if doesn't exist
       const referralCode = 'SMH' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).substring(2, 6).toUpperCase();
       const createResult = await query(
-        'INSERT INTO team_members (user_id, referral_code) VALUES ($1, $2) RETURNING *',
+        'INSERT INTO team_members (user_id, referral_code) VALUES (?, ?)',
         [req.user.userId, referralCode]
       );
       return res.json({
@@ -53,9 +53,9 @@ router.get('/referrals', authenticateToken, async (req, res) => {
       `SELECT tm.*, u.name, u.email, u.avatar_url, u.created_at as joined_date
       FROM team_members tm
       JOIN users u ON tm.user_id = u.id
-      WHERE tm.referred_by = (SELECT id FROM team_members WHERE user_id = $1)
+      WHERE tm.referred_by = (SELECT id FROM team_members WHERE user_id = ?)
       ORDER BY tm.created_at DESC
-      LIMIT $2 OFFSET $3`,
+      LIMIT ? OFFSET ?`,
       [req.user.userId, limit, offset]
     );
 
@@ -63,7 +63,7 @@ router.get('/referrals', authenticateToken, async (req, res) => {
     const countResult = await query(
       `SELECT COUNT(*) as count
       FROM team_members tm
-      WHERE tm.referred_by = (SELECT id FROM team_members WHERE user_id = $1)`,
+      WHERE tm.referred_by = (SELECT id FROM team_members WHERE user_id = ?)`,
       [req.user.userId]
     );
 
@@ -105,7 +105,7 @@ router.post('/join', authenticateToken, [
 
     // Find referrer
     const referrerResult = await query(
-      'SELECT id, user_id FROM team_members WHERE referral_code = $1',
+      'SELECT id, user_id FROM team_members WHERE referral_code = ?',
       [referral_code]
     );
 
@@ -120,7 +120,7 @@ router.post('/join', authenticateToken, [
 
     // Check if user is already in team
     const existingMember = await query(
-      'SELECT id FROM team_members WHERE user_id = $1',
+      'SELECT id FROM team_members WHERE user_id = ?',
       [req.user.userId]
     );
 
@@ -134,13 +134,13 @@ router.post('/join', authenticateToken, [
     // Create team member with referrer
     const newReferralCode = 'SMH' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).substring(2, 6).toUpperCase();
     const result = await query(
-      'INSERT INTO team_members (user_id, referral_code, referred_by) VALUES ($1, $2, $3) RETURNING *',
+      'INSERT INTO team_members (user_id, referral_code, referred_by) VALUES (?, ?, ?)',
       [req.user.userId, newReferralCode, referrer.id]
     );
 
     // Update referrer's referral count
     await query(
-      'UPDATE team_members SET total_referrals = total_referrals + 1, active_referrals = active_referrals + 1 WHERE id = $1',
+      'UPDATE team_members SET total_referrals = total_referrals + 1, active_referrals = active_referrals + 1 WHERE id = ?',
       [referrer.id]
     );
 
@@ -162,7 +162,7 @@ router.post('/join', authenticateToken, [
 router.get('/stats', authenticateToken, async (req, res) => {
   try {
     const teamResult = await query(
-      'SELECT * FROM team_members WHERE user_id = $1',
+      'SELECT * FROM team_members WHERE user_id = ?',
       [req.user.userId]
     );
 

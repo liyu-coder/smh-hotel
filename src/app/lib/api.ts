@@ -1,5 +1,23 @@
 // API utility for backend communication
+// For local development: cd backend && npm start
+// For production: https://hotelreservation.website/api
 const API_BASE_URL = 'http://localhost:5000/api';
+
+export interface Hotel {
+  id: number;
+  name: string;
+  country: string;
+  city: string;
+  level: number;
+  price: number;
+  currency: string;
+  image: string;
+  description: string;
+  amenities: string[];
+  rating: number;
+  featured: boolean;
+  commission: number;
+}
 
 interface ApiResponse<T> {
   success: boolean;
@@ -145,13 +163,12 @@ export const userApi = {
 
 // Hotels API
 export const hotelsApi = {
-  getHotels: async (params?: { page?: number; limit?: number; country?: string; featured?: boolean; search?: string }) => {
-    const queryString = new URLSearchParams(params as any).toString();
-    return apiRequest(`/hotels?${queryString}`);
+  getHotels: async () => {
+    return apiRequest('/reservation/hotels');
   },
 
   getHotel: async (id: string) => {
-    return apiRequest(`/hotels/${id}`);
+    return apiRequest(`/reservation/hotels/${id}`);
   },
 
   getFeaturedHotels: async () => {

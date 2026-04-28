@@ -146,7 +146,8 @@ export function Withdraw() {
     }
 
     if (parseFloat(amount) > walletData.availableBalance) {
-      alert('Insufficient balance');
+      const required = parseFloat(amount) - walletData.availableBalance;
+      alert(`Insufficient balance. You need $${required.toFixed(2)} more to complete this withdrawal.`);
       return;
     }
 

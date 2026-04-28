@@ -117,28 +117,41 @@ const testimonials = [
   }
 ];
 
+// Reliable Unsplash images for hero slider
 const heroSlidesStatic = [
   {
     id: 1,
     title: "Downtown Urban Living",
     subtitle: "Ultra-luxury modern penthouse with breathtaking city skyline views",
-    image: "https://hotel-reserva-online.com/assets/images/hero-property-3.jpg",
+    image: "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?w=1920&q=80",
     cta: "Explore Now"
   },
   {
     id: 2,
     title: "Luxury Residential Living",
     subtitle: "Magnificent modern mansion with minimalist architecture and infinity fountain",
-    image: "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?q=80&w=2000&auto=format&fit=crop",
+    image: "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=1920&q=80",
     cta: "Book Now"
   },
   {
     id: 3,
     title: "Oceanfront Resort Paradise",
     subtitle: "Luxury tropical resort with infinity pool reflecting sunset sky",
-    image: "https://images.unsplash.com/photo-1571896349842-33c89424de2d?q=80&w=2000&auto=format&fit=crop",
+    image: "https://images.unsplash.com/photo-1571896349842-33c89424de2d?w=1920&q=80",
     cta: "Discover"
   }
+];
+
+// Default hotel images for fallback
+const defaultHotelImages = [
+  "https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800&q=80",
+  "https://images.unsplash.com/photo-1582719508461-905c673771fd?w=800&q=80",
+  "https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?w=800&q=80",
+  "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?w=800&q=80",
+  "https://images.unsplash.com/photo-1611892440504-42a792e5d708?w=800&q=80",
+  "https://images.unsplash.com/photo-1564501049412-61c2a3083791?w=800&q=80",
+  "https://images.unsplash.com/photo-1571003123894-1f059cf5b5fa?w=800&q=80",
+  "https://images.unsplash.com/photo-1551882547-ff40c63fe5fa?w=800&q=80"
 ];
 
 export function Home() {
@@ -177,7 +190,12 @@ export function Home() {
       // Fetch hotels
       const hotelsResponse = await hotelsApi.getHotels({ limit: 100 });
       if (hotelsResponse.success) {
-        setFilteredHotels(hotelsResponse.hotels);
+        // Add fallback images for hotels without images
+        const hotelsWithImages = hotelsResponse.hotels.map((hotel: any, index: number) => ({
+          ...hotel,
+          image: hotel.image || hotel.image_url || defaultHotelImages[index % defaultHotelImages.length]
+        }));
+        setFilteredHotels(hotelsWithImages);
       }
 
       // Fetch countries
@@ -185,8 +203,8 @@ export function Home() {
       if (countriesResponse.success) {
         setCountries(countriesResponse.countries.map((c: any) => ({
           name: c.name,
-          image: c.image_url || customImages[c.name] || `https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=600&h=400`,
-          hotel_count: c.hotel_count || 0
+          image: c.image_url || `https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=600&h=400`,
+          count: c.hotel_count || 0
         })));
       }
     } catch (error) {
@@ -232,8 +250,9 @@ export function Home() {
       return;
     }
 
-    console.log('Reserve button clicked for hotel:', hotel.id, hotel.name);
-    navigate(`/checkout/${hotel.id}`);
+    // Always redirect to plans page first for plan selection
+    // Pass hotel ID via URL params
+    navigate(`/plans?hotelId=${hotel.id}`);
   };
 
   const showToastMessage = (message: string, type: 'success' | 'error') => {
@@ -389,6 +408,46 @@ export function Home() {
       {/* Responsive Navigation */}
       <ResponsiveNav />
 
+      {/* Navigation Tabs */}
+      <div className="bg-white border-b border-gray-200 sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4">
+          <div className="flex items-center justify-center space-x-8 py-3">
+            <Link
+              to="/deposit"
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-gray-700 hover:text-[#F4C444] hover:bg-[#F4C444]/10 transition-all duration-200 font-medium"
+              style={{ fontFamily: 'Montserrat' }}
+            >
+              <CreditCard className="w-4 h-4" />
+              Deposit
+            </Link>
+            <Link
+              to="/withdraw"
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-gray-700 hover:text-[#F4C444] hover:bg-[#F4C444]/10 transition-all duration-200 font-medium"
+              style={{ fontFamily: 'Montserrat' }}
+            >
+              <Wallet className="w-4 h-4" />
+              Withdraw
+            </Link>
+            <Link
+              to="/support"
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-gray-700 hover:text-[#F4C444] hover:bg-[#F4C444]/10 transition-all duration-200 font-medium"
+              style={{ fontFamily: 'Montserrat' }}
+            >
+              <HelpCircle className="w-4 h-4" />
+              Support
+            </Link>
+            <Link
+              to="/team"
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-gray-700 hover:text-[#F4C444] hover:bg-[#F4C444]/10 transition-all duration-200 font-medium"
+              style={{ fontFamily: 'Montserrat' }}
+            >
+              <Users className="w-4 h-4" />
+              Team
+            </Link>
+          </div>
+        </div>
+      </div>
+
       {/* Premium Hero Section - 70/30 Layout */}
       <div ref={heroRef} className="relative min-h-screen flex flex-col lg:flex-row">
         {/* LEFT SIDE (70%) - Hero Image Slider */}
@@ -405,6 +464,7 @@ export function Home() {
               <ImageWithFallback
                 src={heroSlides[currentSlide].image}
                 alt={heroSlides[currentSlide].title}
+                fallbackType="hero"
                 className="w-full h-full object-cover"
                 style={{ aspectRatio: '16/9' }}
               />
@@ -552,31 +612,25 @@ export function Home() {
                 </motion.button>
 
                 <motion.button
-                  whileHover={{ 
-                    scale: 1.02, 
+                  whileHover={{
+                    scale: 1.02,
                     y: -4,
                     boxShadow: '0 12px 24px rgba(0,0,0,0.15)'
                   }}
                   whileTap={{ scale: 0.98 }}
-                  onClick={() => {
-    try {
-      navigate('/bookings');
-    } catch (error) {
-      console.error('Navigation error:', error);
-    }
-  }}
+                  onClick={() => window.open('https://t.me/Customer_support24hours', '_blank')}
                   className="w-full text-left p-4 rounded-2xl bg-white border border-gray-100 hover:border-gray-200 transition-all"
                 >
                   <div className="flex items-center gap-3">
-                    <div 
+                    <div
                       className="w-10 h-10 rounded-xl flex items-center justify-center"
                       style={{ backgroundColor: '#f8f8f8' }}
                     >
-                      <Calendar className="w-5 h-5 text-[#D4AF37]" />
+                      <Send className="w-5 h-5 text-[#D4AF37]" />
                     </div>
                     <div>
-                      <h3 className="font-semibold text-sm" style={{ color: '#1a1a1a' }}>My Reservations</h3>
-                      <p className="text-xs text-[#6b6b6b]">View and manage bookings</p>
+                      <h3 className="font-semibold text-sm" style={{ color: '#1a1a1a' }}>Telegram Support</h3>
+                      <p className="text-xs text-[#6b6b6b]">Get 24/7 customer support</p>
                     </div>
                   </div>
                 </motion.button>
@@ -780,7 +834,7 @@ export function Home() {
             <p className="text-[#6b6b6b] text-lg">Handpicked luxury stays around the world</p>
           </motion.div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4 gap-4 md:gap-6">
             {filteredHotels.slice(0, 8).map((hotel: any, index: number) => (
               <motion.div
                 key={hotel.id}
@@ -798,10 +852,11 @@ export function Home() {
   }}
                 className="group cursor-pointer bg-white rounded-2xl overflow-hidden border border-black/5"
               >
-                <div className="relative h-64 overflow-hidden">
+                <div className="relative h-64 overflow-hidden bg-gray-100">
                   <ImageWithFallback
                     src={hotel.image}
                     alt={hotel.name}
+                    fallbackType="hotel"
                     className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                     style={{ aspectRatio: '4/3' }}
                   />
@@ -836,19 +891,18 @@ export function Home() {
                     <span className="text-[#6b6b6b] text-sm">/night</span>
                   </div>
                   <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
                     onClick={(e) => {
                       e.stopPropagation();
-                      console.log('Reserve button clicked for hotel:', hotel.id, hotel.name);
-                      navigate(`/checkout/${hotel.id}`);
+                      try {
+                        navigate('/plans');
+                      } catch (error) {
+                        console.error('Navigation error:', error);
+                      }
                     }}
-                    disabled={walletData.todayOrders >= walletData.maxDailyOrders}
-                    className="w-full py-3 rounded-lg font-bold text-black transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    style={{
-                      backgroundColor: '#F4C444',
-                      fontFamily: 'Montserrat'
-                    }}
+                    className="w-full py-3 rounded-xl text-white font-semibold transition-colors"
+                    style={{ backgroundColor: '#D4AF37' }}
                   >
                     Reserve Now
                   </motion.button>
@@ -903,6 +957,7 @@ export function Home() {
                             <ImageWithFallback
                               src={country.image}
                               alt={country.name}
+                              fallbackType="hotel"
                               className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110 aspect-[4/3]"
                             />
                             <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />

@@ -290,10 +290,18 @@ export function ReservesPage() {
                         </div>
                         <div className="text-xs text-gray-500">per night</div>
                       </div>
-                      <div className="px-4 py-2 bg-gray-100 rounded-lg text-xs text-gray-600 text-center">
-                        <div className="font-medium">Admin Controlled</div>
-                        <div className="text-[10px]">Complete tasks to unlock</div>
-                      </div>
+                      <motion.button
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate('/plans');
+                        }}
+                        className="px-4 py-2 rounded-lg text-white font-semibold text-sm transition-colors"
+                        style={{ backgroundColor: '#D4AF37' }}
+                      >
+                        Reserve Now
+                      </motion.button>
                     </div>
                   </div>
                 </motion.div>

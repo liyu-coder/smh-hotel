@@ -40,13 +40,12 @@ export function ProfileSettings() {
     { id: 'payment', label: 'Payment Methods', icon: CreditCard }
   ];
 
-  const paymentMethods = [
+  const [paymentMethods, setPaymentMethods] = useState([
     {
       id: 1,
       type: 'Credit Card',
       last4: '4242',
       brand: 'Visa',
-      expiry: '12/25',
       isDefault: true
     },
     {
@@ -54,10 +53,59 @@ export function ProfileSettings() {
       type: 'Credit Card',
       last4: '8888',
       brand: 'Mastercard',
-      expiry: '08/24',
+      isDefault: false
+    },
+    {
+      id: 3,
+      type: 'Crypto Wallet',
+      name: 'Trust Wallet - USDT (TRC20)',
+      address: 'TNXpjoH6kNCSHAWw5VC8vn6tbXt9Fp1L9q',
+      network: 'Tron (TRC20)',
+      isDefault: false
+    },
+    {
+      id: 4,
+      type: 'Crypto Wallet',
+      name: 'KuCoin - USDT (TRC20)',
+      address: 'TQgo9MgiztoPYdAdEeRiM5YLoX76ATbvN2',
+      network: 'Tron (TRC20)',
+      isDefault: false
+    },
+    {
+      id: 5,
+      type: 'Crypto Wallet',
+      name: 'MEXC - USDT (TRC20)',
+      address: 'TH7v2jXYSeJNRkzzECEQugdTzVReffDSHC',
+      network: 'Tron (TRC20)',
+      isDefault: false
+    },
+    {
+      id: 6,
+      type: 'Crypto Wallet',
+      name: 'Bitget - USDT (TRC20)',
+      address: 'TBvixNUGPmZt1rLgyP3fEwZCyepzSH3eDP',
+      network: 'Tron (TRC20)',
+      isDefault: false
+    },
+    {
+      id: 7,
+      type: 'Crypto Wallet',
+      name: 'OKX - USDT (TRC20)',
+      address: 'TB8YStZmVMQWLfwLJzMvRYk7MfHQXGn7cX',
+      network: 'Tron (TRC20)',
       isDefault: false
     }
-  ];
+  ]);
+
+  const [showAddPaymentModal, setShowAddPaymentModal] = useState(false);
+  const [newPaymentMethod, setNewPaymentMethod] = useState({
+    type: 'Credit Card',
+    brand: 'Visa',
+    last4: '',
+    name: '',
+    address: '',
+    network: 'Tron (TRC20)'
+  });
 
   const handleSaveProfile = async () => {
     setIsSaving(true);
@@ -110,7 +158,50 @@ export function ProfileSettings() {
   };
 
   const handleSetDefaultPayment = (id: number) => {
+    setPaymentMethods(prev => prev.map(method => ({
+      ...method,
+      isDefault: method.id === id
+    })));
     alert('Payment method set as default');
+  };
+
+  const handleAddPaymentMethod = () => {
+    if (newPaymentMethod.type === 'Credit Card' && !newPaymentMethod.last4) {
+      alert('Please enter the last 4 digits of your card');
+      return;
+    }
+    if (newPaymentMethod.type === 'Crypto Wallet' && !newPaymentMethod.name) {
+      alert('Please enter the wallet name');
+      return;
+    }
+
+    const newId = Math.max(...paymentMethods.map(m => m.id), 0) + 1;
+    const newMethod: any = {
+      id: newId,
+      type: newPaymentMethod.type,
+      isDefault: false
+    };
+
+    if (newPaymentMethod.type === 'Credit Card') {
+      newMethod.brand = newPaymentMethod.brand;
+      newMethod.last4 = newPaymentMethod.last4;
+    } else if (newPaymentMethod.type === 'Crypto Wallet') {
+      newMethod.name = newPaymentMethod.name;
+      newMethod.address = newPaymentMethod.address || 'Not provided';
+      newMethod.network = newPaymentMethod.network || 'Tron (TRC20)';
+    }
+
+    setPaymentMethods(prev => [...prev, newMethod]);
+    setShowAddPaymentModal(false);
+    setNewPaymentMethod({
+      type: 'Credit Card',
+      brand: 'Visa',
+      last4: '',
+      name: '',
+      address: '',
+      network: 'Tron (TRC20)'
+    });
+    alert('Payment method added successfully');
   };
 
   const handleLogout = () => {
@@ -581,6 +672,7 @@ export function ProfileSettings() {
                     <motion.button
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
+                      onClick={() => setShowAddPaymentModal(true)}
                       className="px-4 py-2 rounded-lg font-semibold text-white flex items-center gap-2"
                       style={{ backgroundColor: '#D4AF37' }}
                     >
@@ -606,8 +698,15 @@ export function ProfileSettings() {
                                   </span>
                                 )}
                               </div>
-                              <p className="text-sm text-gray-600">••••• {method.last4}</p>
-                              <p className="text-sm text-gray-500">Expires {method.expiry}</p>
+                              {method.type === 'Credit Card' && (
+                                <p className="text-sm text-gray-600">••••• {method.last4}</p>
+                              )}
+                              {method.type === 'Crypto Wallet' && (
+                                <>
+                                  <p className="text-sm text-gray-600">{method.address}</p>
+                                  <p className="text-sm text-gray-500">{method.network}</p>
+                                </>
+                              )}
                             </div>
                           </div>
                           <div className="flex gap-2">
@@ -628,6 +727,106 @@ export function ProfileSettings() {
                       </div>
                     ))}
                   </div>
+
+                  {/* Add Payment Method Modal */}
+                  {showAddPaymentModal && (
+                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                      <motion.div
+                        initial={{ scale: 0.9, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        className="bg-white rounded-xl p-6 max-w-md w-full"
+                      >
+                        <h3 className="text-xl font-semibold mb-4">Add Payment Method</h3>
+                        
+                        <div className="space-y-4">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Payment Type</label>
+                            <select
+                              value={newPaymentMethod.type}
+                              onChange={(e) => setNewPaymentMethod(prev => ({ ...prev, type: e.target.value }))}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#D4AF37]"
+                            >
+                              <option value="Credit Card">Credit Card</option>
+                              <option value="Crypto Wallet">Crypto Wallet (USDT TRC20)</option>
+                            </select>
+                          </div>
+
+                          {newPaymentMethod.type === 'Credit Card' && (
+                            <>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Card Brand</label>
+                                <select
+                                  value={newPaymentMethod.brand}
+                                  onChange={(e) => setNewPaymentMethod(prev => ({ ...prev, brand: e.target.value }))}
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#D4AF37]"
+                                >
+                                  <option value="Visa">Visa</option>
+                                  <option value="Mastercard">Mastercard</option>
+                                  <option value="American Express">American Express</option>
+                                </select>
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Last 4 Digits</label>
+                                <input
+                                  type="text"
+                                  maxLength={4}
+                                  value={newPaymentMethod.last4}
+                                  onChange={(e) => setNewPaymentMethod(prev => ({ ...prev, last4: e.target.value.replace(/\D/g, '') }))}
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#D4AF37]"
+                                  placeholder="1234"
+                                />
+                              </div>
+                            </>
+                          )}
+
+                          {newPaymentMethod.type === 'Crypto Wallet' && (
+                            <>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Wallet Name</label>
+                                <select
+                                  value={newPaymentMethod.name}
+                                  onChange={(e) => setNewPaymentMethod(prev => ({ ...prev, name: e.target.value }))}
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#D4AF37]"
+                                >
+                                  <option value="">Select Wallet</option>
+                                  <option value="Trust Wallet - USDT (TRC20)">Trust Wallet - USDT (TRC20)</option>
+                                  <option value="KuCoin - USDT (TRC20)">KuCoin - USDT (TRC20)</option>
+                                  <option value="MEXC - USDT (TRC20)">MEXC - USDT (TRC20)</option>
+                                  <option value="Bitget - USDT (TRC20)">Bitget - USDT (TRC20)</option>
+                                  <option value="OKX - USDT (TRC20)">OKX - USDT (TRC20)</option>
+                                </select>
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Wallet Address</label>
+                                <input
+                                  type="text"
+                                  value={newPaymentMethod.address}
+                                  onChange={(e) => setNewPaymentMethod(prev => ({ ...prev, address: e.target.value }))}
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#D4AF37]"
+                                  placeholder="e.g., TNXpjoH6kNCSHAWw5VC8vn6tbXt9Fp1L9q"
+                                />
+                              </div>
+                            </>
+                          )}
+                        </div>
+
+                        <div className="flex gap-3 mt-6">
+                          <button
+                            onClick={() => setShowAddPaymentModal(false)}
+                            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={handleAddPaymentMethod}
+                            className="flex-1 px-4 py-2 bg-[#D4AF37] text-white rounded-lg hover:bg-[#b8962e]"
+                          >
+                            Add Method
+                          </button>
+                        </div>
+                      </motion.div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

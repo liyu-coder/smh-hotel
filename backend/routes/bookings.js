@@ -18,28 +18,26 @@ router.get('/', authenticateToken, async (req, res) => {
       FROM bookings b
       JOIN hotels h ON b.hotel_id = h.id
       LEFT JOIN countries c ON h.country_id = c.id
-      WHERE b.user_id = $1
+      WHERE b.user_id = ?
     `;
     const params = [req.user.userId];
-    let paramCount = 2;
 
     if (status) {
-      queryText += ` AND b.status = $${paramCount++}`;
+      queryText += ' AND b.status = ?';
       params.push(status);
     }
 
-    queryText += ` ORDER BY b.created_at DESC LIMIT $${paramCount++} OFFSET $${paramCount++}`;
+    queryText += ' ORDER BY b.created_at DESC LIMIT ? OFFSET ?';
     params.push(limit, offset);
 
     const result = await query(queryText, params);
 
     // Get total count
-    let countQuery = 'SELECT COUNT(*) FROM bookings WHERE user_id = $1';
+    let countQuery = 'SELECT COUNT(*) FROM bookings WHERE user_id = ?';
     const countParams = [req.user.userId];
-    let countParamCount = 2;
 
     if (status) {
-      countQuery += ` AND status = $${countParamCount++}`;
+      countQuery += ' AND status = ?';
       countParams.push(status);
     }
 
@@ -75,7 +73,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
       FROM bookings b
       JOIN hotels h ON b.hotel_id = h.id
       LEFT JOIN countries c ON h.country_id = c.id
-      WHERE b.id = $1 AND b.user_id = $2`,
+      WHERE b.id = ? AND b.user_id = ?`,
       [req.params.id, req.user.userId]
     );
 
@@ -123,7 +121,7 @@ router.post('/', authenticateToken, [
 
     // Get hotel details
     const hotelResult = await client.query(
-      'SELECT * FROM hotels WHERE id = $1 AND is_active = true',
+      'SELECT * FROM hotels WHERE id = ? AND is_active = true',
       [hotel_id]
     );
 
@@ -141,7 +139,7 @@ router.post('/', authenticateToken, [
     let linked_booking_id = null;
     if (linked_booking_reference) {
       const linkedResult = await client.query(
-        'SELECT id FROM bookings WHERE booking_reference = $1',
+        'SELECT id FROM bookings WHERE booking_reference = ?',
         [linked_booking_reference]
       );
       if (linkedResult.rows.length > 0) {
@@ -149,9 +147,9 @@ router.post('/', authenticateToken, [
       }
     }
 
-    // Check if user has reached daily order limit
+    // Check if user has reached daily order limit AND task limit
     const walletResult = await client.query(
-      'SELECT * FROM user_wallets WHERE user_id = $1',
+      'SELECT * FROM user_wallets WHERE user_id = ?',
       [req.user.userId]
     );
 
@@ -165,15 +163,33 @@ router.post('/', authenticateToken, [
 
     const wallet = walletResult.rows[0];
 
+    // Check if user requires recharge (task limit reached)
+    if (wallet.requires_recharge) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Task limit reached. Please deposit to continue.' 
+      });
+    }
+
+    // Check if user has reached their task limit
+    if (wallet.completed_tasks >= wallet.task_limit) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Task limit reached. Please deposit to continue.' 
+      });
+    }
+
     // Check consolidated daily limit if linked
     let todayOrdersCount = wallet.today_orders;
     if (linked_booking_id) {
       const consolidatedResult = await client.query(
         `SELECT SUM(today_orders) as total FROM user_wallets 
          WHERE user_id IN (
-           SELECT user_id FROM bookings WHERE id = $1 OR linked_booking_id = $1
+           SELECT user_id FROM bookings WHERE id = ? OR linked_booking_id = ?
            UNION
-           SELECT $2
+           SELECT ?
          )`,
         [linked_booking_id, req.user.userId]
       );
@@ -203,6 +219,15 @@ router.post('/', authenticateToken, [
 
     // Calculate total amount
     const totalAmount = hotel.price_per_night * nights;
+    
+    // Check sufficient balance for this booking
+    if (wallet.available_balance < totalAmount) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Insufficient balance for this booking' 
+      });
+    }
     const commissionAmount = totalAmount * hotel.commission_rate;
 
     // Generate booking reference
@@ -211,21 +236,65 @@ router.post('/', authenticateToken, [
     // Create booking
     const bookingResult = await client.query(
       `INSERT INTO bookings (user_id, hotel_id, booking_reference, check_in_date, check_out_date, guests, total_amount, commission_amount, special_requests, linked_booking_id)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-      RETURNING *`,
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [req.user.userId, hotel_id, bookingReference, check_in_date, check_out_date, guests, totalAmount, commissionAmount, special_requests || null, linked_booking_id]
     );
 
-    // Update wallet daily orders
+    // Update wallet: deduct balance, increment daily orders and completed tasks
     await client.query(
-      'UPDATE user_wallets SET today_orders = today_orders + 1, updated_at = CURRENT_TIMESTAMP WHERE user_id = $1',
+      `UPDATE user_wallets 
+       SET available_balance = available_balance - ?,
+           today_orders = today_orders + 1,
+           completed_tasks = completed_tasks + 1,
+           total_spent = COALESCE(total_spent, 0) + ?,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE user_id = ?`,
+      [totalAmount, totalAmount, req.user.userId]
+    );
+
+    // Check if task limit reached after this booking
+    const updatedWalletResult = await client.query(
+      'SELECT completed_tasks, task_limit FROM user_wallets WHERE user_id = ?',
       [req.user.userId]
     );
+    
+    const updatedWallet = updatedWalletResult.rows[0];
+    if (updatedWallet.completed_tasks >= updatedWallet.task_limit) {
+      // Mark wallet as requiring recharge
+      await client.query(
+        'UPDATE user_wallets SET requires_recharge = TRUE WHERE user_id = ?',
+        [req.user.userId]
+      );
+    }
 
     // Update hotel bookings count
     await client.query(
-      'UPDATE hotels SET bookings_count = bookings_count + 1 WHERE id = $1',
+      'UPDATE hotels SET bookings_count = bookings_count + 1 WHERE id = ?',
       [hotel_id]
+    );
+
+    // Create booking transaction record
+    await client.query(
+      `INSERT INTO transactions (user_id, type, amount, status, description, booking_id, created_at)
+       VALUES (?, 'booking', ?, 'completed', ?, ?, CURRENT_TIMESTAMP)`,
+      [req.user.userId, totalAmount, `Booking payment for ${hotel.name}`, bookingResult.rows[0].id]
+    );
+
+    // Auto-create and complete user_task for this booking (NO approval needed)
+    await client.query(
+      `INSERT INTO user_tasks (user_id, deposit_id, task_number, commission_amount, status, completed_at, created_at)
+       VALUES (?, NULL, ?, ?, 'completed', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+      [req.user.userId, wallet.completed_tasks + 1, commissionAmount]
+    );
+
+    // Add commission to user's available balance immediately
+    await client.query(
+      `UPDATE user_wallets 
+       SET available_balance = available_balance + ?,
+           total_profit = COALESCE(total_profit, 0) + ?,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE user_id = ?`,
+      [commissionAmount, commissionAmount, req.user.userId]
     );
 
     await client.query('COMMIT');
@@ -272,7 +341,7 @@ router.put('/:id/cancel', authenticateToken, async (req, res) => {
     }
 
     await query(
-      'UPDATE bookings SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+      'UPDATE bookings SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
       ['cancelled', req.params.id]
     );
 

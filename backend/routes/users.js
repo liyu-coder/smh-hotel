@@ -9,7 +9,7 @@ const { body, validationResult } = require('express-validator');
 router.get('/profile', authenticateToken, async (req, res) => {
   try {
     const result = await query(
-      'SELECT id, email, name, phone, avatar_url, role, is_active, is_verified, created_at FROM users WHERE id = $1',
+      'SELECT id, email, name, phone, avatar_url, role, is_active, is_verified, created_at FROM users WHERE id = ?',
       [req.user.userId]
     );
 
@@ -51,33 +51,37 @@ router.put('/profile', authenticateToken, [
     const { name, phone, avatar_url } = req.body;
     const updates = [];
     const values = [];
-    let paramCount = 1;
 
     if (name) {
-      updates.push(`name = $${paramCount++}`);
+      updates.push('name = ?');
       values.push(name);
     }
     if (phone !== undefined) {
-      updates.push(`phone = $${paramCount++}`);
+      updates.push('phone = ?');
       values.push(phone);
     }
     if (avatar_url) {
-      updates.push(`avatar_url = $${paramCount++}`);
+      updates.push('avatar_url = ?');
       values.push(avatar_url);
     }
 
     if (updates.length === 0) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'No fields to update' 
+      return res.status(400).json({
+        success: false,
+        message: 'No fields to update'
       });
     }
 
     values.push(req.user.userId);
 
-    const result = await query(
-      `UPDATE users SET ${updates.join(', ')} WHERE id = $${paramCount} RETURNING id, email, name, phone, avatar_url, role, is_active, is_verified, created_at`,
+    await query(
+      `UPDATE users SET ${updates.join(', ')} WHERE id = ?`,
       values
+    );
+
+    const result = await query(
+      'SELECT id, email, name, phone, avatar_url, role, is_active, is_verified, created_at FROM users WHERE id = ?',
+      [req.user.userId]
     );
 
     res.json({
@@ -112,7 +116,7 @@ router.put('/password', authenticateToken, [
 
     // Get current password
     const result = await query(
-      'SELECT password_hash FROM users WHERE id = $1',
+      'SELECT password_hash FROM users WHERE id = ?',
       [req.user.userId]
     );
 
@@ -141,7 +145,7 @@ router.put('/password', authenticateToken, [
 
     // Update password
     await query(
-      'UPDATE users SET password_hash = $1 WHERE id = $2',
+      'UPDATE users SET password_hash = ? WHERE id = ?',
       [passwordHash, req.user.userId]
     );
 
@@ -162,7 +166,7 @@ router.put('/password', authenticateToken, [
 router.delete('/account', authenticateToken, async (req, res) => {
   try {
     await query(
-      'DELETE FROM users WHERE id = $1',
+      'DELETE FROM users WHERE id = ?',
       [req.user.userId]
     );
 

@@ -1,0 +1,12 @@
+# Frontend routing
+RewriteEngine On
+RewriteBase /
+RewriteRule ^index\.html$ - [L]
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule . /index.html [L]
+
+# Proxy backend API to Node.js
+ProxyPreserveHost On
+ProxyPass /api http://localhost:5000/api
+ProxyPassReverse /api http://localhost:5000/api

@@ -11,13 +11,26 @@ router.get('/', optionalAuth, async (req, res) => {
     const offset = (page - 1) * limit;
 
     const result = await query(
-      `SELECT c.*, 
-        (SELECT COUNT(*) FROM hotels WHERE country_id = c.id AND is_active = true) as hotel_count
+      `SELECT c.* 
       FROM countries c
       WHERE c.is_active = true
       ORDER BY c.name ASC
-      LIMIT $1 OFFSET $2`,
+      LIMIT ? OFFSET ?`,
       [limit, offset]
+    );
+
+    // Get hotel count for each country
+    const countriesWithCount = await Promise.all(
+      result.rows.map(async (country) => {
+        const hotelCountResult = await query(
+          'SELECT COUNT(*) as count FROM hotels WHERE country = ? AND is_active = true',
+          [country.name]
+        );
+        return {
+          ...country,
+          hotel_count: parseInt(hotelCountResult.rows[0]?.count || 0)
+        };
+      })
     );
 
     // Get total count
@@ -28,7 +41,7 @@ router.get('/', optionalAuth, async (req, res) => {
 
     res.json({
       success: true,
-      countries: result.rows,
+      countries: countriesWithCount,
       pagination: {
         page,
         limit,
@@ -52,7 +65,7 @@ router.get('/:id', optionalAuth, async (req, res) => {
       `SELECT c.*, 
         (SELECT COUNT(*) FROM hotels WHERE country_id = c.id AND is_active = true) as hotel_count
       FROM countries c
-      WHERE c.id = $1 AND c.is_active = true`,
+      WHERE c.id = ? AND c.is_active = true`,
       [req.params.id]
     );
 
@@ -68,7 +81,7 @@ router.get('/:id', optionalAuth, async (req, res) => {
     // Get hotels for this country
     const hotelsResult = await query(
       `SELECT h.* FROM hotels h
-      WHERE h.country_id = $1 AND h.is_active = true
+      WHERE h.country_id = ? AND h.is_active = true
       ORDER BY h.rating DESC, h.created_at DESC
       LIMIT 20`,
       [req.params.id]
@@ -95,7 +108,7 @@ router.get('/name/:name', optionalAuth, async (req, res) => {
       `SELECT c.*, 
         (SELECT COUNT(*) FROM hotels WHERE country_id = c.id AND is_active = true) as hotel_count
       FROM countries c
-      WHERE c.name ILIKE $1 AND c.is_active = true`,
+      WHERE c.name LIKE ? AND c.is_active = true`,
       [`%${req.params.name}%`]
     );
 

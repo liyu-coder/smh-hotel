@@ -14,11 +14,13 @@ import {
   Star,
   MapPin,
   Shield,
-  Loader2
+  Loader2,
+  AlertCircle
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { allHotels } from '../../data/hotels';
 import { ImageWithFallback } from '../components/figma/ImageWithFallback';
+import { bookingsApi } from '../lib/api';
 
 interface WalletData {
   availableBalance: number;
@@ -40,20 +42,14 @@ export function CheckoutPage() {
   // Loading state
   const [isLoading, setIsLoading] = useState(true);
 
-  // Wallet state from localStorage
-  const [walletData, setWalletData] = useState<WalletData>(() => {
-    const saved = localStorage.getItem('walletData');
-    if (saved) {
-      try { return JSON.parse(saved); } catch { /* ignore */ }
-    }
-    return {
-      availableBalance: 2500.00,
-      todayOrders: 0,
-      maxDailyOrders: 25,
-      tasksCompleted: false,
-      pending: 0,
-      totalApproved: 5000.00
-    };
+  // Wallet state from API
+  const [walletData, setWalletData] = useState<WalletData>({
+    availableBalance: 0.00,
+    todayOrders: 0,
+    maxDailyOrders: 25,
+    tasksCompleted: false,
+    pending: 0,
+    totalApproved: 0.00
   });
 
   // Form state
@@ -71,10 +67,9 @@ export function CheckoutPage() {
   const [toastMessage, setToastMessage] = useState('');
   const [toastType, setToastType] = useState<'success' | 'error'>('success');
 
-  // Handle loading
-  useEffect(() => {
-    setIsLoading(false);
-  }, []);
+  // Insufficient balance modal
+  const [showRechargeModal, setShowRechargeModal] = useState(false);
+  const [rechargeAmount, setRechargeAmount] = useState(0);
 
   const currencies = [
     { code: 'USD' as const, symbol: '$', name: 'US Dollar', icon: DollarSign },
@@ -123,6 +118,11 @@ export function CheckoutPage() {
 
   const commissionRate = 0.26;
 
+  // Handle loading and check proceed flag
+  useEffect(() => {
+    setIsLoading(false);
+  }, []);
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -151,82 +151,50 @@ export function CheckoutPage() {
   const totalDeduction = hotel.price + commission;
 
   const handleCompleteReservation = () => {
-    // Balance check
+    // Balance check - show recharge modal
     if (totalDeduction > walletData.availableBalance) {
-      setToastMessage('Insufficient balance for this level. Please deposit more funds.');
-      setToastType('error');
-      setShowToast(true);
-      setTimeout(() => setShowToast(false), 4000);
+      const needed = totalDeduction - walletData.availableBalance;
+      setRechargeAmount(needed);
+      setShowRechargeModal(true);
       return;
     }
 
-    // Daily order limit check
+    // Daily order limit check - show recharge modal to upgrade plan
     if (walletData.todayOrders >= walletData.maxDailyOrders) {
-      setToastMessage(`You have reached the maximum of ${walletData.maxDailyOrders} reserves for today.`);
-      setToastType('error');
-      setShowToast(true);
-      setTimeout(() => setShowToast(false), 4000);
+      setRechargeAmount(100); // Minimum recharge to continue
+      setShowRechargeModal(true);
       return;
     }
 
     setIsProcessing(true);
 
     // Simulate processing delay
-    setTimeout(() => {
+    setTimeout(async () => {
       const newTaskNumber = walletData.todayOrders + 1;
 
-      // Add to reservations
-      const bookingRef = `SMH-${Date.now()}`;
-      const newReservation = {
-        id: Date.now(),
-        hotelId: hotel.id,
-        hotelName: hotel.name,
-        hotelImage: hotel.image,
-        hotelPrice: hotel.price,
-        hotelCurrency: hotel.currency,
-        hotelLocation: `${hotel.city}, ${hotel.country}`,
-        hotelLevel: hotel.level,
-        status: 'Completed',
-        date: new Date().toISOString().split('T')[0],
-        commission: commission,
-        netAmount: hotel.price,
-        paymentMethod: selectedPaymentMethod,
-        currency: selectedCurrency,
-        bookingReference: bookingRef,
-        linkedTo: linkCode || null
-      };
-
-      // Handle consolidation in localStorage
-      let consolidatedOrders = newTaskNumber;
-      if (linkCode) {
-        // Find the linked reservation and its owner's progress
-        const allReserves = JSON.parse(localStorage.getItem('myReservations') || '[]');
-        const linkedRes = allReserves.find((r: any) => r.bookingReference === linkCode);
-        if (linkedRes) {
-          console.log('Linking to reservation:', linkCode);
-          // In a real app, we would fetch the shared progress from the backend
-          // Here we just increment the current user's progress
-        }
+      // Save booking to database via API
+      try {
+        await bookingsApi.createBooking({
+          hotel_id: Number(hotel.id),
+          check_in_date: new Date().toISOString().split('T')[0],
+          check_out_date: new Date(Date.now() + 86400000).toISOString().split('T')[0],
+          guests: 1,
+          special_requests: `Checkout booking - Commission: $${commission}, Net: $${hotel.price}, Payment: ${selectedPaymentMethod}`
+        });
+      } catch (error) {
+        console.error('Failed to save booking to DB:', error);
       }
 
       // Deduct from balance
       const newWalletData = {
         ...walletData,
         availableBalance: walletData.availableBalance - totalDeduction,
-        todayOrders: consolidatedOrders,
-        tasksCompleted: consolidatedOrders >= walletData.maxDailyOrders,
+        todayOrders: newTaskNumber,
+        tasksCompleted: newTaskNumber >= walletData.maxDailyOrders,
         totalApproved: walletData.totalApproved + totalDeduction
       };
 
       setWalletData(newWalletData);
-      localStorage.setItem('walletData', JSON.stringify(newWalletData));
-
-      const existingReservations = JSON.parse(localStorage.getItem('myReservations') || '[]');
-      localStorage.setItem('myReservations', JSON.stringify([newReservation, ...existingReservations]));
-
-      // Also store in userBookings for compatibility
-      const existingBookings = JSON.parse(localStorage.getItem('userBookings') || '[]');
-      localStorage.setItem('userBookings', JSON.stringify([newReservation, ...existingBookings]));
 
       setIsProcessing(false);
       setCompletedTask(newTaskNumber);
@@ -262,6 +230,38 @@ export function CheckoutPage() {
           </div>
         </div>
       </motion.div>
+
+      {/* Plans Display Section */}
+      <div className="bg-gradient-to-r from-blue-50 to-yellow-50 border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 md:px-6 py-4">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-lg font-bold" style={{ fontFamily: 'Montserrat', color: '#1a1a1a' }}>
+              Current Plan: {walletData.totalApproved >= 5000 ? 'Plan 3' : walletData.totalApproved >= 1000 ? 'Plan 2' : 'Plan 1'}
+            </h2>
+            <button 
+              onClick={() => navigate('/plans')}
+              className="text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+              style={{ fontFamily: 'Montserrat', backgroundColor: '#F4C444', color: '#1a1a1a' }}
+            >
+              View All Plans
+            </button>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#F4C444' }}></div>
+              <span className="text-sm" style={{ fontFamily: 'Inter', color: '#6b6b6b' }}>
+                Balance: ${walletData.availableBalance.toFixed(2)} USDT
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+              <span className="text-sm" style={{ fontFamily: 'Inter', color: '#6b6b6b' }}>
+                Today's Reserves: {walletData.todayOrders}/{walletData.maxDailyOrders}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 md:px-6 py-8">
@@ -690,6 +690,64 @@ export function CheckoutPage() {
           </span>
         </motion.div>
       )}
+
+      {/* Recharge Modal - Matches Screenshot Exactly */}
+      <AnimatePresence>
+        {showRechargeModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+            onClick={() => setShowRechargeModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-lg p-6 max-w-lg w-full shadow-xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Message Section */}
+              <div className="text-center mb-4">
+                <p className="text-gray-800 text-sm leading-relaxed">
+                  Hello, your account balance is insufficient, you cannot submit this order temporarily, you need to recharge 
+                  <span className="text-red-600 font-semibold"> {rechargeAmount.toFixed(2)}USD</span> to submit this order.
+                  <span className="text-red-500"> The commission for completing this order will be increased by 1.80 times</span>
+                </p>
+              </div>
+
+              {/* Recharge Link */}
+              <div className="text-center mb-4">
+                <button
+                  onClick={() => {
+                    setShowRechargeModal(false);
+                    navigate('/deposit');
+                  }}
+                  className="text-red-600 font-semibold text-lg hover:underline"
+                  style={{ fontFamily: 'Montserrat' }}
+                >
+                  Recharge
+                </button>
+              </div>
+
+              {/* Start Booking Button */}
+              <button
+                onClick={() => {
+                  setShowRechargeModal(false);
+                  // User wants to try booking - close modal and let them attempt
+                  // The booking will check balance again and show modal if still insufficient
+                  handleCompleteReservation();
+                }}
+                className="w-full py-3 rounded-lg font-semibold text-white bg-blue-500 hover:bg-blue-600 transition-colors"
+                style={{ fontFamily: 'Montserrat' }}
+              >
+                Start booking
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -13,12 +13,16 @@ dist/
 build/
 .vite/
 
+# Database
+*.sql
+!schema.sql
+!migrate-cash-gap.sql
+
 # Debug logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 *.log
-logs/
 
 # IDE
 .vscode/
@@ -34,17 +38,3 @@ Thumbs.db
 temp/
 tmp/
 *.tmp
-
-# Database (keep schema files)
-*.sql
-!backend/schema.sql
-!backend/migrate-cash-gap.sql
-!backend/schema-mysql.sql
-
-# Test coverage
-coverage/
-.nyc_output/
-
-# Deployment scripts (keep)
-!start-backend.bat
-!check-servers.bat

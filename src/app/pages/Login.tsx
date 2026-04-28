@@ -2,46 +2,63 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router';
 import { motion } from 'motion/react';
 import { Eye, EyeOff, Globe, Headphones, AlertCircle } from 'lucide-react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { useAuth } from '../context/AuthContext';
+
+// Zod schema for validation
+const loginSchema = z.object({
+  email: z
+    .string()
+    .min(1, 'Email is required')
+    .email('Please enter a valid email address')
+    .toLowerCase()
+    .trim(),
+  password: z
+    .string()
+    .min(1, 'Password is required')
+    .min(8, 'Password must be at least 8 characters')
+    .max(128, 'Password must be less than 128 characters'),
+});
+
+type LoginFormData = z.infer<typeof loginSchema>;
 
 export function Login() {
   const [showPassword, setShowPassword] = useState(false);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
   const navigate = useNavigate();
-  const { login, isLoading, error, clearError } = useAuth();
+  const { login } = useAuth();
 
-  const handleInputChange = (field: string, value: string) => {
-    if (field === 'email') {
-      setEmail(value);
-    } else if (field === 'password') {
-      setPassword(value);
-    }
-    
-    // Clear error when user starts typing
-    if (errors[field]) {
-      setErrors(prev => ({ ...prev, [field]: '' }));
-    }
-  };
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<LoginFormData>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: {
+      email: '',
+      password: '',
+    },
+  });
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const onSubmit = async (data: LoginFormData) => {
+    setLoading(true);
+    setErrorMessage('');
     
-    // Clear any existing errors
-    clearError();
-    setErrors({});
-    
-    // Use the enhanced authentication
-    const result = await login(email, password);
-    
-    if (result.success) {
-      navigate('/home');
-    } else {
-      // Set error from auth context
-      if (result.error) {
-        setErrors({ general: result.error.message });
+    try {
+      const result = await login(data.email, data.password);
+      
+      if (result.success) {
+        navigate('/home');
+      } else {
+        setErrorMessage(result.error?.message || 'Login failed');
       }
+    } catch (error: any) {
+      setErrorMessage(error.message || 'Login failed');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -110,21 +127,21 @@ export function Login() {
                 </p>
               </div>
 
-              <form onSubmit={handleSubmit} className="space-y-5">
+              <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
                 {/* General Error */}
-                {errors.general && (
+                {errorMessage && (
                   <motion.div
                     initial={{ opacity: 0, y: -10 }}
                     animate={{ opacity: 1, y: 0 }}
                     className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm"
                   >
-                    {errors.general}
+                    {errorMessage}
                   </motion.div>
                 )}
 
                 {/* Email/Phone Input */}
                 <div>
-                  <label 
+                  <label
                     htmlFor="email"
                     className="block text-sm font-medium text-gray-700 mb-2"
                     style={{ fontFamily: 'Inter, sans-serif' }}
@@ -134,12 +151,11 @@ export function Login() {
                   <input
                     id="email"
                     type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    {...register('email')}
                     placeholder="Enter your email"
                     className={`w-full px-4 py-3 rounded-lg border transition-all ${
-                      errors.email 
-                        ? 'border-red-300 bg-red-50' 
+                      errors.email
+                        ? 'border-red-300 bg-red-50'
                         : 'border-gray-200 bg-[#f8f8f8] focus:border-[#F4C444] focus:ring-2 focus:ring-[#F4C444]/20'
                     }`}
                     style={{ fontFamily: 'Inter, sans-serif' }}
@@ -150,14 +166,14 @@ export function Login() {
                       animate={{ opacity: 1 }}
                       className="mt-1 text-sm text-red-600"
                     >
-                      {errors.email}
+                      {errors.email.message}
                     </motion.p>
                   )}
                 </div>
 
                 {/* Password Input */}
                 <div>
-                  <label 
+                  <label
                     htmlFor="password"
                     className="block text-sm font-medium text-gray-700 mb-2"
                     style={{ fontFamily: 'Inter, sans-serif' }}
@@ -168,12 +184,11 @@ export function Login() {
                     <input
                       id="password"
                       type={showPassword ? 'text' : 'password'}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
+                      {...register('password')}
                       placeholder="Enter your password"
                       className={`w-full px-4 py-3 pr-12 rounded-lg border transition-all ${
-                        errors.password 
-                          ? 'border-red-300 bg-red-50' 
+                        errors.password
+                          ? 'border-red-300 bg-red-50'
                           : 'border-gray-200 bg-[#f8f8f8] focus:border-[#F4C444] focus:ring-2 focus:ring-[#F4C444]/20'
                       }`}
                       style={{ fontFamily: 'Inter, sans-serif' }}
@@ -192,7 +207,7 @@ export function Login() {
                       animate={{ opacity: 1 }}
                       className="mt-1 text-sm text-red-600"
                     >
-                      {errors.password}
+                      {errors.password.message}
                     </motion.p>
                   )}
                 </div>
@@ -200,16 +215,16 @@ export function Login() {
                 {/* Login Button */}
                 <motion.button
                   type="submit"
-                  disabled={isLoading}
-                  whileHover={{ scale: isLoading ? 1 : 1.02, y: isLoading ? 0 : -2 }}
-                  whileTap={{ scale: isLoading ? 1 : 0.98 }}
+                  disabled={loading}
+                  whileHover={{ scale: loading ? 1 : 1.02, y: loading ? 0 : -2 }}
+                  whileTap={{ scale: loading ? 1 : 0.98 }}
                   className="w-full py-3 px-4 rounded-lg font-bold text-black transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                  style={{ 
+                  style={{
                     backgroundColor: '#F4C444',
                     fontFamily: 'Inter, sans-serif'
                   }}
                 >
-                  {isLoading ? (
+                  {loading ? (
                     <div className="flex items-center justify-center gap-2">
                       <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
                       Signing in...

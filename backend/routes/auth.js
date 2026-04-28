@@ -25,14 +25,14 @@ router.post('/register', [
 
     // Check if user already exists
     const existingUser = await query(
-      'SELECT id FROM users WHERE email = $1',
+      'SELECT id FROM users WHERE email = ?',
       [email]
     );
 
     if (existingUser.rows.length > 0) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'User with this email already exists' 
+      return res.status(400).json({
+        success: false,
+        message: 'User with this email already exists'
       });
     }
 
@@ -41,16 +41,21 @@ router.post('/register', [
     const passwordHash = await bcrypt.hash(password, salt);
 
     // Insert user
-    const result = await query(
-      'INSERT INTO users (email, password_hash, name, phone) VALUES ($1, $2, $3, $4) RETURNING id, email, name, role, is_active',
+    await query(
+      'INSERT INTO users (email, password_hash, name, phone) VALUES (?, ?, ?, ?)',
       [email, passwordHash, name, phone || null]
+    );
+
+    // Fetch newly created user (MySQL doesn't support RETURNING *)
+    const result = await query(
+      'SELECT * FROM users WHERE id = LAST_INSERT_ID()'
     );
 
     const user = result.rows[0];
 
     // Create user wallet
     await query(
-      'INSERT INTO user_wallets (user_id) VALUES ($1)',
+      'INSERT INTO user_wallets (user_id) VALUES (?)',
       [user.id]
     );
 
@@ -88,8 +93,11 @@ router.post('/login', [
   body('password').notEmpty()
 ], async (req, res) => {
   try {
+    console.log('🔐 Login attempt for email:', req.body.email);
+    
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
+      console.log('❌ Validation errors:', errors.array());
       return res.status(400).json({ 
         success: false, 
         errors: errors.array() 
@@ -99,12 +107,16 @@ router.post('/login', [
     const { email, password } = req.body;
 
     // Find user
+    console.log('🔍 Querying user by email...');
     const result = await query(
-      'SELECT id, email, password_hash, name, role, is_active FROM users WHERE email = $1',
+      'SELECT id, email, password_hash, name, role, is_active FROM users WHERE email = ?',
       [email]
     );
 
+    console.log('📊 User query result:', result.rows.length, 'rows found');
+
     if (result.rows.length === 0) {
+      console.log('❌ User not found');
       return res.status(401).json({ 
         success: false, 
         message: 'Invalid email or password' 
@@ -112,9 +124,11 @@ router.post('/login', [
     }
 
     const user = result.rows[0];
+    console.log('✅ User found:', user.email, 'Role:', user.role, 'Active:', user.is_active);
 
     // Check if user is active
     if (!user.is_active) {
+      console.log('❌ User is inactive');
       return res.status(403).json({ 
         success: false, 
         message: 'Account is deactivated' 
@@ -122,14 +136,18 @@ router.post('/login', [
     }
 
     // Verify password
+    console.log('🔐 Verifying password...');
     const isMatch = await bcrypt.compare(password, user.password_hash);
 
     if (!isMatch) {
+      console.log('❌ Password mismatch');
       return res.status(401).json({ 
         success: false, 
         message: 'Invalid email or password' 
       });
     }
+
+    console.log('✅ Password verified');
 
     // Generate JWT token
     const token = jwt.sign(
@@ -137,12 +155,15 @@ router.post('/login', [
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRE || '7d' }
     );
+    console.log('✅ JWT token generated');
 
     // Get user wallet data
+    console.log('🔍 Fetching wallet data...');
     const walletResult = await query(
-      'SELECT * FROM user_wallets WHERE user_id = $1',
+      'SELECT * FROM user_wallets WHERE user_id = ?',
       [user.id]
     );
+    console.log('✅ Wallet data fetched');
 
     const wallet = walletResult.rows[0] || null;
 
@@ -159,11 +180,15 @@ router.post('/login', [
       },
       wallet
     });
+    console.log('✅ Login successful response sent');
   } catch (error) {
-    console.error('Login error:', error);
+    console.error('❌ Login error:', error.message);
+    console.error('❌ Error stack:', error.stack);
+    console.error('❌ Error details:', JSON.stringify(error, null, 2));
     res.status(500).json({ 
       success: false, 
-      message: 'Error logging in' 
+      message: 'Error logging in',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
@@ -185,7 +210,7 @@ router.post('/forgot-password', [
 
     // Find user
     const result = await query(
-      'SELECT id FROM users WHERE email = $1',
+      'SELECT id FROM users WHERE email = ?',
       [email]
     );
 
@@ -209,7 +234,7 @@ router.post('/forgot-password', [
     // Save reset token to database
     const resetPasswordExpires = new Date(Date.now() + 3600000); // 1 hour
     await query(
-      'UPDATE users SET reset_password_token = $1, reset_password_expires = $2 WHERE id = $3',
+      'UPDATE users SET reset_password_token = ?, reset_password_expires = ? WHERE id = ?',
       [resetToken, resetPasswordExpires, user.id]
     );
 
@@ -250,7 +275,7 @@ router.post('/reset-password', [
 
     // Check if token is still valid in database
     const result = await query(
-      'SELECT id, reset_password_expires FROM users WHERE id = $1 AND reset_password_token = $2',
+      'SELECT id, reset_password_expires FROM users WHERE id = ? AND reset_password_token = ?',
       [decoded.userId, token]
     );
 
@@ -277,7 +302,7 @@ router.post('/reset-password', [
 
     // Update password and clear reset token
     await query(
-      'UPDATE users SET password_hash = $1, reset_password_token = NULL, reset_password_expires = NULL WHERE id = $2',
+      'UPDATE users SET password_hash = ?, reset_password_token = NULL, reset_password_expires = NULL WHERE id = ?',
       [passwordHash, user.id]
     );
 
@@ -298,14 +323,14 @@ router.post('/reset-password', [
 router.get('/me', authenticateToken, async (req, res) => {
   try {
     const result = await query(
-      'SELECT id, email, name, phone, avatar_url, role, is_active, is_verified, created_at FROM users WHERE id = $1',
+      'SELECT id, email, name, phone, avatar_url, role, is_active, is_verified, created_at FROM users WHERE id = ?',
       [req.user.userId]
     );
 
     if (result.rows.length === 0) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'User not found' 
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
       });
     }
 
@@ -313,7 +338,7 @@ router.get('/me', authenticateToken, async (req, res) => {
 
     // Get user wallet data
     const walletResult = await query(
-      'SELECT * FROM user_wallets WHERE user_id = $1',
+      'SELECT * FROM user_wallets WHERE user_id = ?',
       [user.id]
     );
 

@@ -52,6 +52,7 @@ export function Wallet() {
 
   // Transaction state
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [transactionFilter, setTransactionFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
 
   // Load wallet data from backend
   useEffect(() => {
@@ -540,8 +541,27 @@ export function Wallet() {
               </h3>
             </div>
             <div className="p-6">
+              {/* Filter Buttons */}
+              <div className="flex gap-2 mb-4">
+                {['all', 'pending', 'approved', 'rejected'].map((filter) => (
+                  <button
+                    key={filter}
+                    onClick={() => setTransactionFilter(filter as any)}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      transactionFilter === filter
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                    style={{ fontFamily: 'Inter' }}
+                  >
+                    {filter.charAt(0).toUpperCase() + filter.slice(1)}
+                  </button>
+                ))}
+              </div>
               <div className="space-y-4">
-                {transactions.map((transaction) => (
+                {transactions
+                  .filter(t => transactionFilter === 'all' || t.status === transactionFilter)
+                  .map((transaction) => (
                   <div
                     key={transaction.id}
                     className="flex items-center justify-between p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors"
@@ -570,9 +590,9 @@ export function Wallet() {
                     </div>
                   </div>
                 ))}
-                {transactions.length === 0 && (
+                {transactions.filter(t => transactionFilter === 'all' || t.status === transactionFilter).length === 0 && (
                   <div className="text-center py-8 text-gray-500" style={{ fontFamily: 'Inter' }}>
-                    No transactions yet
+                    {transactionFilter === 'all' ? 'No transactions yet' : `No ${transactionFilter} transactions`}
                   </div>
                 )}
               </div>

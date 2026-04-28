@@ -23,6 +23,8 @@ import { AdminLogin } from './pages/AdminLogin';
 import { Admin } from './pages/Admin';
 import { ReservationPlans } from './pages/ReservationPlans';
 import { Tasks } from './pages/Tasks';
+import { Dashboard } from './pages/Dashboard';
+import { Deposit } from './pages/Deposit';
 import { ProtectedRoute } from './components/ProtectedRoute';
 
 export const router = createBrowserRouter([
@@ -51,6 +53,22 @@ export const router = createBrowserRouter([
     element: (
       <ProtectedRoute>
         <Home />
+      </ProtectedRoute>
+    )
+  },
+  {
+    path: '/dashboard',
+    element: (
+      <ProtectedRoute>
+        <Dashboard />
+      </ProtectedRoute>
+    )
+  },
+  {
+    path: '/deposit',
+    element: (
+      <ProtectedRoute>
+        <Deposit />
       </ProtectedRoute>
     )
   },

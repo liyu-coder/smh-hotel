@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router';
 import { motion } from 'motion/react';
 import { ArrowLeft, Search, Calendar, MapPin, Users, Star, Filter, Heart, Wifi, Car, Coffee, Dumbbell, Check } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { bookingsApi } from '../lib/api';
 
 export function Reserve() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -107,8 +108,12 @@ export function Reserve() {
     return icons[amenity] || Check;
   };
 
-  const handleBookNow = (hotel: any) => {
+  const handleBookNow = async (hotel: any) => {
     setSelectedHotel(hotel);
+    
+    const nights = checkIn && checkOut ? 
+      Math.ceil((new Date(checkOut).getTime() - new Date(checkIn).getTime()) / (1000 * 60 * 60 * 24)) : 1;
+    const totalPrice = hotel.price * nights;
     
     // Create booking confirmation with exact functionality
     const bookingDetails = {
@@ -119,8 +124,7 @@ export function Reserve() {
       guests: guests,
       roomType: hotel.rooms[0], // Default to first room type
       price: hotel.price,
-      totalPrice: hotel.price * (checkIn && checkOut ? 
-        Math.ceil((new Date(checkOut).getTime() - new Date(checkIn).getTime()) / (1000 * 60 * 60 * 24)) : 1),
+      totalPrice: totalPrice,
       status: 'confirmed',
       bookingReference: `SMH-${Date.now()}`
     };
@@ -139,18 +143,31 @@ export function Reserve() {
     );
 
     if (confirmBooking) {
-      // Store booking in localStorage for persistence
-      const existingBookings = JSON.parse(localStorage.getItem('userBookings') || '[]');
-      existingBookings.push(bookingDetails);
-      localStorage.setItem('userBookings', JSON.stringify(existingBookings));
-      
-      // Show success message and redirect
-      alert(`Booking Confirmed!\n\nBooking Reference: ${bookingDetails.bookingReference}\nHotel: ${hotel.name}\nTotal: $${bookingDetails.totalPrice}\n\nRedirecting to your reservations...`);
-      
-      // Navigate to bookings page to see the confirmed booking
-      setTimeout(() => {
-        navigate('/bookings');
-      }, 1500);
+      try {
+        // Save booking to database via API
+        const response = await bookingsApi.createBooking({
+          hotel_id: hotel.id,
+          check_in_date: bookingDetails.checkIn,
+          check_out_date: bookingDetails.checkOut,
+          guests: guests,
+          special_requests: `Room: ${bookingDetails.roomType}, Price: $${hotel.price}/night, Total: $${totalPrice} for ${nights} nights`
+        });
+
+        if (response.success) {
+          // Show success message and redirect
+          alert(`Booking Confirmed!\n\nBooking Reference: ${bookingDetails.bookingReference}\nHotel: ${hotel.name}\nTotal: $${bookingDetails.totalPrice}\n\nRedirecting to your reservations...`);
+          
+          // Navigate to bookings page to see the confirmed booking
+          setTimeout(() => {
+            navigate('/bookings');
+          }, 1500);
+        } else {
+          alert('Failed to create booking: ' + (response.message || 'Unknown error'));
+        }
+      } catch (error: any) {
+        console.error('Booking error:', error);
+        alert('Error creating booking: ' + (error.message || 'Network error'));
+      }
     }
   };
 

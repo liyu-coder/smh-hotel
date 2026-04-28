@@ -181,7 +181,15 @@ export function Admin() {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const [activeTab, setActiveTab] = useState<'dashboard' | 'users' | 'transactions' | 'hotels' | 'bookings' | 'deposits' | 'withdrawals' | 'reports' | 'gateways'>('dashboard');
-  const [stats, setStats] = useState<any>(null);
+  const [stats, setStats] = useState<any>({
+  totalUsers: 0,
+  totalDeposits: 0,
+  totalWithdrawals: 0,
+  totalBookings: 0,
+  totalRevenue: 0,
+  pendingDeposits: 0,
+  activeUsers: 0
+});
   const [users, setUsers] = useState<any[]>([]);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [hotels, setHotels] = useState<any[]>([]);
@@ -280,6 +288,11 @@ export function Admin() {
   ];
 
   // Check if user is admin
+  useEffect(() => {
+    loadStats();
+    loadDeposits(); // Auto-load deposits on admin panel open
+  }, []);
+
   useEffect(() => {
     console.log('🔍 Admin component - User:', user);
     console.log('🔍 Admin component - User role:', user?.role);
@@ -387,7 +400,7 @@ export function Admin() {
         const resp = await adminApi.getUsers({ limit: 100 });
         if (resp.success) setReportRows(resp.users || []);
       } else if (reportFilter === 'notification_history') {
-        const token = localStorage.getItem('token');
+        const token = localStorage.getItem('auth_token');
         const res = await fetch('http://localhost:5000/api/support/admin/all?limit=100', {
           headers: { 'Authorization': `Bearer ${token}` }
         });
@@ -398,7 +411,7 @@ export function Admin() {
         const data = await res.json();
         if (data.success) setReportRows(data.hotels || []);
       } else if (reportFilter === 'referral_commissions') {
-        const token = localStorage.getItem('token');
+        const token = localStorage.getItem('auth_token');
         const res = await fetch('http://localhost:5000/api/admin/team-members?limit=100', {
           headers: { 'Authorization': `Bearer ${token}` }
         });
@@ -525,7 +538,7 @@ export function Admin() {
 
   const handleSaveHotel = async () => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('auth_token');
       const url = editingHotel
         ? `http://localhost:5000/api/admin/hotels/${editingHotel.id}`
         : 'http://localhost:5000/api/admin/hotels';
@@ -601,12 +614,36 @@ export function Admin() {
   const loadDeposits = async () => {
     setLoading(true);
     try {
+      // Use API to load ALL deposits from MySQL database (not just pending)
       const response = await adminApi.getTransactions({ type: 'deposit' });
-      if (response.success) {
-        setDeposits(response.transactions);
+      console.log('📦 API response for deposits:', response);
+      
+      if (response.success && response.transactions) {
+        // Load ALL deposits (pending, approved, completed, rejected)
+        const allDeposits = response.transactions.filter((t: any) => t.type === 'deposit');
+        setDeposits(allDeposits);
+        
+        // Count pending deposits for stats
+        const pendingCount = allDeposits.filter((t: any) => {
+          const status = (t.status || '').toLowerCase();
+          return status === 'pending';
+        }).length;
+        
+        // Update stats
+        setStats((prev: any) => ({
+          ...prev,
+          pendingDeposits: pendingCount,
+          totalDeposits: allDeposits.filter((t: any) => {
+            const status = (t.status || '').toLowerCase();
+            return status === 'approved' || status === 'completed';
+          }).length
+        }));
+        
+        console.log('✅ Loaded deposits from MySQL:', allDeposits.length, 'total deposits (', pendingCount, 'pending)');
       }
     } catch (error) {
-      console.error('Error loading deposits:', error);
+      console.error('Error loading deposits from API:', error);
+      showNotification('error', 'Failed to load deposits');
     } finally {
       setLoading(false);
     }
@@ -661,18 +698,27 @@ export function Admin() {
       // Include task_limit and percent for deposit approvals
       if (status === 'approved' && isDeposit) {
         updateData.task_limit = taskLimit;
-        updateData.percent = taskPercent;
+        updateData.percent = taskPercent; // Backend expects percent (e.g., 4 for 4%)
       }
-      await adminApi.updateTransactionStatus(transactionId, updateData);
-      showNotification('success', `Transaction ${status} successfully${status === 'approved' && isDeposit ? ` with ${taskLimit} tasks at ${taskPercent}%` : ''}`);
-      // Reload all transaction-related data
-      loadTransactions();
-      loadDeposits();
-      loadWithdrawals();
-      loadStats();
+      
+      // Use API to update transaction status in MySQL
+      const response = await adminApi.updateTransactionStatus(transactionId, updateData);
+
+      if (response.success) {
+        console.log('✅ Transaction updated via API');
+
+        if (status === 'approved' && isDeposit) {
+          showNotification('success', `Deposit approved with ${taskLimit} tasks at ${taskPercent}%`);
+        } else {
+          showNotification('success', `Transaction ${status} successfully`);
+        }
+
+        loadWithdrawals();
+        loadStats();
+      }
     } catch (error) {
-      showNotification('error', 'Failed to update transaction status');
-      console.error('Error updating transaction status:', error);
+      console.error('❌ API error:', error);
+      showNotification('error', 'Failed to approve transaction');
     } finally {
       setActionLoading(false);
       setShowConfirmModal(false);
@@ -2590,7 +2636,7 @@ export function Admin() {
                 <button
                   onClick={async () => {
                     if (confirmAction.type === 'deleteHotel') {
-                      const token = localStorage.getItem('token');
+                      const token = localStorage.getItem('auth_token');
                       const response = await fetch(`http://localhost:5000/api/admin/hotels/${confirmAction.id}`, {
                         method: 'DELETE',
                         headers: { 'Authorization': `Bearer ${token}` }

@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { authApi, getToken, removeToken } from '../lib/api';
+import { authApi, getToken, setToken, removeToken } from '../lib/api';
 
 interface User {
   id: number;
@@ -84,7 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(response.user);
       }
     } catch (error) {
-      // Token might be invalid, remove it
+      // If API fails, user is not authenticated
       removeToken();
       setUser(null);
     }
@@ -116,8 +116,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw { code: 'LOGIN_FAILED', message: response.message || 'Login failed' };
       }
     } catch (error: any) {
-      setError(error);
-      return { success: false, error };
+      console.error('❌ Login error:', error);
+      throw { code: 'LOGIN_FAILED', message: error.message || 'Login failed. Please try again.' };
     } finally {
       setIsLoading(false);
     }
@@ -147,9 +147,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const passwordValidation = validatePassword(password);
       if (!passwordValidation.isValid) {
-        throw { 
-          code: 'INVALID_PASSWORD', 
-          message: passwordValidation.errors.join('. ') 
+        throw {
+          code: 'INVALID_PASSWORD',
+          message: passwordValidation.errors.join('. ')
         };
       }
 
@@ -163,8 +163,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw { code: 'REGISTER_FAILED', message: response.message || 'Registration failed' };
       }
     } catch (error: any) {
-      setError(error);
-      return { success: false, error };
+      console.error('❌ Registration error:', error);
+      throw { code: 'REGISTER_FAILED', message: error.message || 'Registration failed. Please try again.' };
     } finally {
       setIsLoading(false);
     }

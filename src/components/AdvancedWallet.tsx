@@ -203,7 +203,8 @@ export function AdvancedWallet() {
     const total = amount + fee;
 
     if (total > walletData.availableBalance) {
-      showToastMessage('Insufficient balance', 'error');
+      const required = total - walletData.availableBalance;
+      showToastMessage(`Insufficient balance. You need $${required.toFixed(2)} more to complete this withdrawal.`, 'error');
       return;
     }
 

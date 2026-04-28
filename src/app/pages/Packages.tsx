@@ -170,7 +170,7 @@ export function Packages() {
           </Link>
 
           <a
-            href="https://t.me/support"
+            href="https://t.me/Customer_support24hours"
             target="_blank"
             rel="noopener noreferrer"
             className="flex flex-col items-center gap-1 text-[#6b6b6b] hover:text-[#D4AF37] transition-colors"

@@ -5,8 +5,8 @@ require('dotenv').config();
 const pool = mysql.createPool({
   host: process.env.DB_HOST || 'localhost',
   port: process.env.DB_PORT || 3306,
-  database: process.env.DB_NAME || 'smh_hotel_reservation',
-  user: process.env.DB_USER || 'root',
+  database: process.env.DB_NAME || 'hotelran_smh_hotel_prod',
+  user: process.env.DB_USER || 'hotelran_smh_hotel',
   password: process.env.DB_PASSWORD,
   waitForConnections: true,
   connectionLimit: 20,
@@ -28,117 +28,120 @@ pool.getConnection()
 // Convert PostgreSQL syntax to MySQL syntax
 function convertPostgresToMySQL(sql) {
   let converted = sql;
-  
-  // Convert $1, $2, $n parameters to ? placeholders
+
   converted = converted.replace(/\$\d+/g, () => '?');
-  
-  // Remove RETURNING * (MySQL doesn't support this, use LAST_INSERT_ID() instead)
   converted = converted.replace(/\s+RETURNING\s+\*/gi, '');
-  
-  // Remove ::numeric, ::integer, ::text, etc. casting
   converted = converted.replace(/::[a-zA-Z0-9_]+(\([^)]*\))?/g, '');
-  
-  // Convert ILIKE to LIKE (MySQL is case-insensitive by default with proper collation)
   converted = converted.replace(/\s+ILIKE\s+/gi, ' LIKE ');
-  
-  // Convert NOW() - both support it, but ensure compatibility
-  // NOW() is the same in both
-  
+  converted = converted.replace(/= ANY\(\?\)/gi, 'IN (?)');
+  converted = converted.replace(/= ANY\(\$1\)/gi, 'IN (?)');
+
   return converted;
 }
 
 // Query helper function
 const query = async (text, params) => {
   const start = Date.now();
+
   try {
     const isInsert = text.trim().toUpperCase().startsWith('INSERT');
-    const hasReturning = /RETURNING\s+\*/i.test(text);
-    
-    // Convert PostgreSQL syntax to MySQL
+    const hasReturning = /RETURNING\s+/i.test(text);
+
     const mysqlQuery = convertPostgresToMySQL(text);
-    const [result] = await pool.execute(mysqlQuery, params);
-    const duration = Date.now() - start;
-    
+
+    console.log('Debug SQL:', mysqlQuery);
+    console.log('Debug Params count:', params?.length || 0);
+
+    const safeParams = params || [];
+
+    const [result] = await pool.execute(mysqlQuery, safeParams);
+
     let rows = result;
     let rowCount = Array.isArray(result) ? result.length : 0;
-    
-    // For INSERT with RETURNING, fetch the inserted row
+
+    // Simulate RETURNING *
     if (isInsert && hasReturning) {
       const insertId = result.insertId;
+
       if (insertId) {
-        // Extract table name from INSERT INTO table_name
         const tableMatch = text.match(/INSERT\s+INTO\s+(\w+)/i);
         const tableName = tableMatch ? tableMatch[1] : null;
-        
+
+        // ⚠️ safer fallback (no SQL injection risk reduction layer here)
         if (tableName) {
           const [insertedRows] = await pool.execute(
             `SELECT * FROM ${tableName} WHERE id = ?`,
             [insertId]
           );
+
           rows = insertedRows;
           rowCount = insertedRows.length;
         }
       }
     }
-    
-    console.log('Executed query', { text: mysqlQuery.substring(0, 100), duration, rows: rowCount });
-    
-    // Return in PostgreSQL-compatible format for minimal code changes
+
+    console.log('Executed query:', {
+      duration: Date.now() - start,
+      rows: rowCount
+    });
+
     return {
-      rows: rows,
-      rowCount: rowCount,
+      rows,
+      rowCount,
       command: text.trim().split(' ')[0].toUpperCase()
     };
+
   } catch (error) {
     console.error('Database query error:', error);
     throw error;
   }
 };
 
-// Get a client from the pool for transactions
+// Get a client from pool (transaction support)
 const getClient = async () => {
   const connection = await pool.getConnection();
-  
-  // Wrap connection to match PostgreSQL client interface
+
   return {
     query: async (text, params) => {
       const isInsert = text.trim().toUpperCase().startsWith('INSERT');
-      const hasReturning = /RETURNING\s+\*/i.test(text);
-      
+      const hasReturning = /RETURNING\s+/i.test(text);
+
       const mysqlQuery = convertPostgresToMySQL(text);
-      const [result] = await connection.execute(mysqlQuery, params);
-      
+      const [result] = await connection.execute(mysqlQuery, params || []);
+
       let rows = result;
       let rowCount = Array.isArray(result) ? result.length : 0;
-      
-      // For INSERT with RETURNING, fetch the inserted row
+
       if (isInsert && hasReturning) {
         const insertId = result.insertId;
+
         if (insertId) {
           const tableMatch = text.match(/INSERT\s+INTO\s+(\w+)/i);
           const tableName = tableMatch ? tableMatch[1] : null;
-          
+
           if (tableName) {
             const [insertedRows] = await connection.execute(
               `SELECT * FROM ${tableName} WHERE id = ?`,
               [insertId]
             );
+
             rows = insertedRows;
             rowCount = insertedRows.length;
           }
         }
       }
-      
+
       return {
-        rows: rows,
-        rowCount: rowCount,
+        rows,
+        rowCount,
         command: text.trim().split(' ')[0].toUpperCase()
       };
     },
+
     release: () => connection.release(),
-    beginTransaction: () => connection.beginTransaction(),
-    commit: () => connection.commit(),
-    rollback: () => connection.rollback()
+    beginTransaction: async () => connection.beginTransaction(),
+    commit: async () => connection.commit(),
+    rollback: async () => connection.rollback()
   };
 };
 

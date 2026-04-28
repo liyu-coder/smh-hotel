@@ -57,22 +57,13 @@ export function HotelDiscovery() {
   const [showFilters, setShowFilters] = useState(false);
   const [favorites, setFavorites] = useState<number[]>([]);
 
-  // Load favorites from localStorage
-  useState(() => {
-    const saved = localStorage.getItem('hotelFavorites');
-    if (saved) {
-      setFavorites(JSON.parse(saved));
-    }
-  });
-
-  // Toggle favorite
   const toggleFavorite = (hotelId: number) => {
     const newFavorites = favorites.includes(hotelId)
       ? favorites.filter(id => id !== hotelId)
       : [...favorites, hotelId];
-    
+
     setFavorites(newFavorites);
-    localStorage.setItem('hotelFavorites', JSON.stringify(newFavorites));
+    // In a real app, this would be saved to the database via API
   };
 
   // Filter and sort hotels

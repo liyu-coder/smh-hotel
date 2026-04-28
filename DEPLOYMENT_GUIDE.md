@@ -1,243 +1,448 @@
-# Deployment Guide: GitHub + Yegara Host
+# Hotel Reservation System - cPanel Deployment Guide
 
-## Step 1: Prepare for Deployment
+## 📋 Prerequisites
 
-### 1.1 Create .gitignore file
-Create `.gitignore` in the root folder:
+### 1. Hosting Requirements
+- **cPanel Hosting Account** with Node.js support
+- **Domain Name** (e.g., yourdomain.com)
+- **MySQL Database** (MySQL 5.7 or higher)
+- **Node.js Version**: 16.x or higher
+- **NPM**: 8.x or higher
+- **SSL Certificate** (recommended for production)
+
+### 2. Required Software/Services
+- Node.js runtime
+- MySQL database server
+- PM2 (Process Manager for Node.js)
+- Nginx or Apache web server
+
+---
+
+## 🔐 Environment Variables (.env)
+
+Create a `.env` file in both `backend/` and root directories:
+
+### Backend .env (backend/.env)
+```env
+# Database Configuration
+DB_HOST=localhost
+DB_USER=your_database_username
+DB_PASSWORD=your_database_password
+DB_NAME=your_database_name
+DB_PORT=3306
+
+# JWT Secret
+JWT_SECRET=your_random_jwt_secret_key_at_least_32_characters_long
+
+# Server Configuration
+PORT=5000
+NODE_ENV=production
+
+# CORS Configuration
+FRONTEND_URL=https://yourdomain.com
+ALLOWED_ORIGINS=https://yourdomain.com,https://www.yourdomain.com
+
+# Rate Limiting
+RATE_LIMIT_WINDOW_MS=900000
+RATE_LIMIT_MAX_REQUESTS=100
+```
+
+### Frontend .env (root/.env)
+```env
+VITE_API_URL=https://yourdomain.com/api
+VITE_APP_NAME=Hotel Reservation System
+```
+
+---
+
+## 🗄️ Database Configuration
+
+### 1. Create MySQL Database via cPanel
+1. Log in to cPanel
+2. Go to **MySQL® Database Wizard**
+3. Create a new database:
+   - **Database Name**: `hotelreservation_db` (or your preferred name)
+4. Create a new database user:
+   - **Username**: `hoteluser` (or your preferred name)
+   - **Password**: Generate a strong password (save this!)
+5. Add user to database with **ALL PRIVILEGES**
+
+### 2. Database Schema
+Run the following SQL commands in phpMyAdmin or via cPanel SQL terminal:
+
+```sql
+-- Create tables
+CREATE TABLE users (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  email VARCHAR(255) UNIQUE NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  role ENUM('user', 'admin') DEFAULT 'user',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE user_wallets (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT UNIQUE NOT NULL,
+  available_balance DECIMAL(10, 2) DEFAULT 0.00,
+  total_deposited DECIMAL(10, 2) DEFAULT 0.00,
+  total_approved DECIMAL(10, 2) DEFAULT 0.00,
+  frozen_balance DECIMAL(10, 2) DEFAULT 0.00,
+  max_daily_orders INT DEFAULT 25,
+  total_completed_tasks INT DEFAULT 0,
+  commission_today DECIMAL(10, 2) DEFAULT 0.00,
+  commission_yesterday DECIMAL(10, 2) DEFAULT 0.00,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE transactions (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL,
+  amount DECIMAL(10, 2) NOT NULL,
+  currency VARCHAR(10) DEFAULT 'USDT',
+  method VARCHAR(50) NOT NULL,
+  status ENUM('pending', 'approved', 'rejected') DEFAULT 'pending',
+  type ENUM('deposit', 'withdrawal') DEFAULT 'deposit',
+  fee DECIMAL(10, 2) DEFAULT 0.00,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE hotels (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  description TEXT,
+  city VARCHAR(100),
+  country VARCHAR(100),
+  price_per_night DECIMAL(10, 2) NOT NULL,
+  rating DECIMAL(2, 1) DEFAULT 0.0,
+  level INT DEFAULT 1,
+  amenities JSON,
+  image_url TEXT,
+  currency VARCHAR(10) DEFAULT 'USDT',
+  is_active BOOLEAN DEFAULT TRUE
+);
+
+CREATE TABLE bookings (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL,
+  hotel_id INT NOT NULL,
+  status ENUM('pending', 'completed', 'cancelled') DEFAULT 'pending',
+  commission DECIMAL(10, 2) DEFAULT 0.00,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (hotel_id) REFERENCES hotels(id)
+);
+
+CREATE TABLE user_tasks (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL,
+  task_number INT NOT NULL,
+  plan_level INT DEFAULT 1,
+  hotel_id INT,
+  hotel_name VARCHAR(255),
+  hotel_price DECIMAL(10, 2),
+  commission_amount DECIMAL(10, 2),
+  status ENUM('pending', 'completed') DEFAULT 'pending',
+  deposit_id INT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  completed_at TIMESTAMP NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE reservation_plans (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(100) NOT NULL,
+  min_amount DECIMAL(10, 2) NOT NULL,
+  max_amount DECIMAL(10, 2) NOT NULL,
+  commission_rate DECIMAL(3, 2) NOT NULL,
+  daily_task_limit INT DEFAULT 25,
+  description TEXT,
+  image_url TEXT,
+  is_active BOOLEAN DEFAULT TRUE
+);
+
+-- Insert default reservation plans
+INSERT INTO reservation_plans (name, min_amount, max_amount, commission_rate, daily_task_limit, description, image_url, is_active) VALUES
+('Plan 1 - Starter', 20, 999, 0.04, 25, 'Perfect for beginners', 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=400', TRUE),
+('Plan 2 - Popular', 1000, 5000, 0.06, 25, 'Best value for regular users', 'https://images.unsplash.com/photo-1582719508461-905c673771fd?w=400', TRUE),
+('Plan 3 - Premium', 5000, 10000, 0.08, 25, 'For power users', 'https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?w=400', TRUE),
+('Plan 4 - Elite', 10000, 50000, 0.10, 25, 'Maximum earning potential', 'https://images.unsplash.com/photo-1571896349842-33c89424de2d?w=400', TRUE);
+```
+
+---
+
+## 📁 File Structure for Production
 
 ```
-# Dependencies
-node_modules/
-backend/node_modules/
-
-# Environment variables
-.env
-backend/.env
-.env.local
-.env.*.local
-
-# Build outputs
-dist/
-build/
-.vite/
-
-# Database
-*.sql
-!schema.sql
-!migrate-cash-gap.sql
-
-# Debug logs
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-*.log
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Temporary files
-temp/
-tmp/
-*.tmp
+/public_html/
+├── backend/              # Backend API
+│   ├── config/
+│   │   └── database.js
+│   ├── middleware/
+│   ├── routes/
+│   ├── server.js
+│   ├── package.json
+│   └── .env
+├── dist/                # Built frontend (Vite build output)
+├── .htaccess            # Apache configuration
+└── index.html           # Frontend entry point
 ```
 
-### 1.2 Create package.json for root (if not exists)
-Create `package.json` in root:
+---
 
-```json
-{
-  "name": "smh-hotel-reservation",
-  "version": "1.0.0",
-  "description": "Hotel Reservation System",
-  "scripts": {
-    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
-    "dev:backend": "cd backend && npm start",
-    "dev:frontend": "npm run dev",
-    "build": "npm run build",
-    "start": "cd backend && npm start"
-  },
-  "engines": {
-    "node": ">=18.0.0"
-  }
+## 🚀 Deployment Steps
+
+### Step 1: Upload Files to cPanel
+
+1. **Compress your project files** (exclude node_modules)
+2. **Upload to cPanel File Manager**:
+   - Go to `public_html` directory
+   - Upload and extract the zip file
+3. **File permissions**:
+   ```bash
+   # Set proper permissions
+   chmod 755 backend/
+   chmod 644 backend/*.js
+   chmod 600 backend/.env
+   ```
+
+### Step 2: Install Dependencies
+
+**Via cPanel Terminal:**
+```bash
+cd public_html
+npm install
+cd backend
+npm install
+```
+
+**Or via SSH:**
+```bash
+ssh username@yourdomain.com
+cd public_html
+npm install --production
+cd backend
+npm install --production
+```
+
+### Step 3: Build Frontend
+
+```bash
+cd public_html
+npm run build
+```
+
+This will create a `dist/` folder with optimized production files.
+
+### Step 4: Configure Backend
+
+1. **Update backend/.env** with your production database credentials
+2. **Update backend/config/database.js** if needed for production MySQL connection
+
+### Step 5: Start Backend with PM2
+
+**Install PM2 globally:**
+```bash
+npm install -g pm2
+```
+
+**Start the backend server:**
+```bash
+cd public_html/backend
+pm2 start server.js --name "hotel-api"
+pm2 save
+pm2 startup
+```
+
+**Useful PM2 commands:**
+```bash
+pm2 list              # List all processes
+pm2 logs hotel-api     # View logs
+pm2 restart hotel-api  # Restart server
+pm2 stop hotel-api     # Stop server
+pm2 delete hotel-api   # Remove from PM2
+```
+
+### Step 6: Configure Web Server
+
+#### Option A: Apache (.htaccess)
+
+Create/update `.htaccess` in `public_html/`:
+```apache
+# Frontend routing
+RewriteEngine On
+RewriteBase /
+RewriteRule ^index\.html$ - [L]
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule . /index.html [L]
+
+# Proxy backend API to Node.js
+ProxyPreserveHost On
+ProxyPass /api http://localhost:5000/api
+ProxyPassReverse /api http://localhost:5000/api
+```
+
+#### Option B: Nginx
+
+If using Nginx, update your server block:
+```nginx
+server {
+    listen 80;
+    server_name yourdomain.com www.yourdomain.com;
+    root /home/username/public_html;
+    index index.html;
+
+    # Frontend
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Backend API
+    location /api {
+        proxy_pass http://localhost:5000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
 }
 ```
 
+### Step 7: SSL Certificate (Recommended)
+
+1. Go to cPanel > **SSL/TLS Status**
+2. Enable **AutoSSL** for your domain
+3. Or use **Let's Encrypt** via cPanel
+
+### Step 8: Test Deployment
+
+1. **Frontend**: Visit `https://yourdomain.com`
+2. **Backend API**: Visit `https://yourdomain.com/api/health` (should return health status)
+3. **Database**: Verify database connection via backend logs
+
 ---
 
-## Step 2: Push to GitHub
+## 🔧 Production Configuration Checklist
 
-### 2.1 Initialize Git (if not done)
+- [ ] Database created and credentials saved
+- [ ] .env files configured with production values
+- [ ] JWT_SECRET set to a strong random string
+- [ ] CORS configured with production domain
+- [ ] Frontend built (`npm run build`)
+- [ ] Backend dependencies installed (`npm install --production`)
+- [ ] PM2 installed and backend started
+- [ ] Web server configured (Apache/Nginx)
+- [ ] SSL certificate installed
+- [ ] API endpoints tested
+- [ ] Database migrations run
+- [ ] Error logging configured
+- [ ] Monitoring set up (optional)
+
+---
+
+## 📊 Important URLs & Credentials
+
+### Save These Securely:
+
+```
+Database Name: hotelreservation_db
+Database User: hoteluser
+Database Password: [YOUR_PASSWORD]
+Database Host: localhost
+
+Backend URL: https://yourdomain.com/api
+Frontend URL: https://yourdomain.com
+
+JWT Secret: [YOUR_JWT_SECRET]
+```
+
+### API Endpoints:
+```
+Health Check: GET /api/health
+User Login: POST /api/auth/login
+User Register: POST /api/auth/register
+Get Hotels: GET /api/reservation/hotels
+Get Plans: GET /api/reservation/plans
+Dashboard: GET /api/reservation/dashboard (requires auth)
+Wallet Summary: GET /api/wallet/summary (requires auth)
+```
+
+---
+
+## 🔒 Security Recommendations
+
+1. **Change default passwords** before deployment
+2. **Enable HTTPS** with SSL certificate
+3. **Set strong JWT_SECRET** (minimum 32 characters)
+4. **Restrict database access** to localhost only
+5. **Enable rate limiting** on API endpoints
+6. **Regularly update dependencies** (`npm audit fix`)
+7. **Set up backups** for database and files
+8. **Monitor logs** for suspicious activity
+9. **Use environment variables** for all sensitive data
+10. **Disable DEBUG mode** in production
+
+---
+
+## 🐛 Troubleshooting
+
+### Backend won't start:
 ```bash
-git init
-git add .
-git commit -m "Initial commit - Hotel Reservation System"
+# Check PM2 logs
+pm2 logs hotel-api
+
+# Check if port 5000 is in use
+netstat -an | grep 5000
 ```
 
-### 2.2 Create GitHub Repository
-1. Go to https://github.com
-2. Click "New Repository"
-3. Name: `smh-hotel-reservation`
-4. Make it Public or Private
-5. DON'T initialize with README (we have one)
-6. Click "Create repository"
+### Database connection error:
+- Verify database credentials in .env
+- Check if MySQL service is running
+- Ensure database user has proper privileges
 
-### 2.3 Push to GitHub
-```bash
-git remote add origin https://github.com/YOUR_USERNAME/smh-hotel-reservation.git
-git branch -M main
-git push -u origin main
-```
+### Frontend 404 errors:
+- Ensure Vite build completed successfully
+- Check .htaccess or Nginx configuration
+- Verify dist/ folder exists and contains files
+
+### CORS errors:
+- Update FRONTEND_URL in backend/.env
+- Check ALLOWED_ORIGINS includes your domain
+- Restart backend after changes
 
 ---
 
-## Step 3: Deploy to Yegara Host
+## 📞 Support & Monitoring
 
-### 3.1 Login to Yegara Host
-1. Go to https://yegara.com or your hosting panel
-2. Login with your credentials
-
-### 3.2 Create Node.js Application
-1. Go to "Applications" or "Node.js Apps"
-2. Click "Create Application"
-3. Fill details:
-   - **App Name**: `smh-hotel`
-   - **Runtime**: Node.js 18.x or 20.x
-   - **Domain**: `yourdomain.com` or subdomain
-
-### 3.3 Connect GitHub Repository
-1. Select "Deploy from Git"
-2. Connect your GitHub account
-3. Select repository: `smh-hotel-reservation`
-4. Branch: `main`
-
-### 3.4 Environment Variables
-Add these in Yegara Host environment settings:
-
-```
-NODE_ENV=production
-PORT=3000
-
-# Database (use Yegara's PostgreSQL or external)
-DB_HOST=your-db-host
-DB_PORT=5432
-DB_NAME=hotel_reservation
-DB_USER=your-db-user
-DB_PASSWORD=your-db-password
-
-# JWT
-JWT_SECRET=your-secret-key-here-min-32-chars
-JWT_EXPIRE=7d
-
-# CORS (your frontend domain)
-CORS_ORIGIN=https://yourdomain.com
-```
-
-### 3.5 Build & Deploy
-1. Click "Deploy" or "Build"
-2. Wait for build to complete
-3. Check logs for any errors
+### Recommended Tools:
+- **PM2** for process management
+- **Uptime Robot** for uptime monitoring
+- **Sentry** for error tracking
+- **New Relic** for performance monitoring
 
 ---
 
-## Step 4: Database Setup on Yegara
+## ✅ Final Deployment Checklist
 
-### Option A: Yegara PostgreSQL
-```bash
-# In Yegara terminal or SSH:
-cd backend
-node run-migration.js
-```
-
-### Option B: External Database (Railway/Neon)
-1. Create DB at https://railway.app or https://neon.tech
-2. Get connection string
-3. Update DB_HOST in environment variables
-
----
-
-## Step 5: Frontend Deployment (Vercel/Netlify)
-
-### Deploy Frontend Separately:
-```bash
-# Install Vercel CLI
-npm i -g vercel
-
-# Deploy
-vercel
-```
-
-### Or use Netlify:
-1. Go to https://netlify.com
-2. Connect GitHub repo
-3. Build command: `npm run build`
-4. Publish directory: `dist`
+Before going live:
+- [ ] All environment variables set
+- [ ] Database populated with seed data
+- [ ] SSL certificate active
+- [ ] Frontend accessible at domain
+- [ ] Backend API responding
+- [ ] User registration/login working
+- [ ] Payment/deposit flow tested
+- [ ] Admin functionality tested
+- [ ] Error handling tested
+- [ ] Mobile responsiveness verified
+- [ ] Performance optimized
+- [ ] Backup strategy in place
 
 ---
 
-## Common Issues & Fixes
-
-### Issue 1: "Cannot find module"
-**Fix**: Ensure `node_modules` not in .gitignore for serverless, or use `npm ci` in build
-
-### Issue 2: Database connection failed
-**Fix**: Check DB_HOST uses internal IP if same server, or allow external connections
-
-### Issue 3: CORS errors
-**Fix**: Update CORS_ORIGIN to match your frontend domain exactly
-
-### Issue 4: PORT already in use
-**Fix**: Use `process.env.PORT` in server.js (already done ✓)
-
----
-
-## Quick Checklist
-
-- [ ] .gitignore created and working
-- [ ] Environment variables secured (not in git)
-- [ ] Database migrations ready
-- [ ] GitHub repo created and pushed
-- [ ] Yegara app created
-- [ ] Environment variables added
-- [ ] Database connected
-- [ ] Migrations run
-- [ ] Frontend deployed
-- [ ] CORS configured
-- [ ] Test login works
-- [ ] Test deposit → approve → task flow
-
----
-
-## Your Commands to Run Now:
-
-```bash
-# 1. Go to project folder
-cd "d:\Hotel Reservation"
-
-# 2. Check if git exists
-git status
-
-# 3. If not initialized:
-git init
-
-# 4. Create .gitignore (copy from above)
-# 5. Add all files
-git add .
-
-# 6. Commit
-git commit -m "Hotel Reservation System v1.0"
-
-# 7. Add remote (replace with your GitHub URL)
-git remote add origin https://github.com/YOUR_USERNAME/smh-hotel-reservation.git
-
-# 8. Push
-git push -u origin main
-```
-
-Done! Now go to Yegara Host and deploy from GitHub.
+**Deployment Date**: ___________
+**Deployed By**: ___________
+**Notes**: ___________

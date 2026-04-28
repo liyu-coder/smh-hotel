@@ -2,23 +2,31 @@ import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { useParams, useNavigate } from 'react-router';
 import { ArrowLeft, Star, Wifi, Utensils, Waves, MapPin, CheckCircle, Calendar, Users, Crown, Gem, Diamond, Sparkles } from 'lucide-react';
-import { allHotels } from '../../data/hotels';
+import { hotelsApi } from '../lib/api';
 import { ImageWithFallback } from '../components/figma/ImageWithFallback';
 
 export function HotelDetailsPage() {
-  const { id } = useParams<{ id: string }>();
+  const { id } = useParams();
   const navigate = useNavigate();
   const [hotel, setHotel] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (id) {
-      const foundHotel = allHotels.find(h => h.id.toString() === id);
-      if (foundHotel) {
-        setHotel(foundHotel);
+    const fetchHotel = async () => {
+      if (!id) return;
+
+      try {
+        const response = await hotelsApi.getHotel(id);
+        if (response.success && response.hotel) {
+          setHotel(response.hotel);
+        }
+      } catch (error) {
+        console.error('Error fetching hotel:', error);
       }
       setLoading(false);
-    }
+    };
+
+    fetchHotel();
   }, [id]);
 
   if (loading) {
@@ -182,17 +190,14 @@ export function HotelDetailsPage() {
 
             <div className="pt-6 border-t border-gray-200">
               <button
-                onClick={() => {
-                  console.log('Reserve button clicked for hotel:', hotel.id, hotel.name);
-                  navigate(`/checkout/${hotel.id}`);
-                }}
+                onClick={() => navigate('/plans')}
                 className="w-full py-4 rounded-xl font-bold text-black transition-colors hover:opacity-90"
                 style={{
                   backgroundColor: '#F4C444',
                   fontFamily: 'Montserrat'
                 }}
               >
-                Reserve This Hotel
+                Reserve Now
               </button>
             </div>
           </motion.div>

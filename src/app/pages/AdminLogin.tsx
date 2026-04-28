@@ -49,12 +49,10 @@ export function AdminLogin() {
     if (result.success) {
       // Redirect to admin panel
       if (result.user && (result.user.role === 'admin' || result.user.role === 'super_admin')) {
-        console.log('✅ Admin login successful, redirecting to admin panel');
         setTimeout(() => {
           navigate('/admin/dashboard');
         }, 1000);
       } else {
-        console.log('⚠️ User is not admin, logging out');
         // User is not admin, log them out
         await logout();
         setErrors({ general: 'Access denied. You must be an admin to access this page.' });

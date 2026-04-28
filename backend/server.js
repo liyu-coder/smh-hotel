@@ -18,6 +18,9 @@ const supportRoutes = require('./routes/support');
 const countryRoutes = require('./routes/countries');
 const adminRoutes = require('./routes/admin');
 const reservationRoutes = require('./routes/reservation');
+const depositRoutes = require('./routes/deposits');
+const adminDepositRoutes = require('./routes/admin-deposits');
+const bookingSessionsRoutes = require('./routes/booking-sessions');
 
 // Import middleware
 const errorHandler = require('./middleware/errorHandler');
@@ -29,15 +32,7 @@ const app = express();
 app.use(helmet());
 app.use(compression());
 
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,
-  message: 'Too many requests from this IP, please try again later.'
-});
-app.use('/api/', limiter);
-
-// CORS configuration - allow multiple common dev ports
+// CORS configuration - allow multiple common dev ports (must be before rate limiter)
 const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:5174',
@@ -59,8 +54,30 @@ app.use(cors({
       callback(new Error('Not allowed by CORS'));
     }
   },
-  credentials: true
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
+
+// Rate limiting (skip OPTIONS requests to avoid blocking CORS preflight)
+const limiter = rateLimit({
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes
+  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,
+  message: {
+    success: false,
+    message: 'Too many requests from this IP, please try again later.'
+  },
+  skip: (req) => req.method === 'OPTIONS',
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false,
+  handler: (req, res) => {
+    res.status(429).json({
+      success: false,
+      message: 'Too many requests from this IP, please try again later.'
+    });
+  }
+});
+app.use('/api/', limiter);
 
 // Body parsing middleware
 app.use(express.json());
@@ -92,6 +109,9 @@ app.use('/api/support', supportRoutes);
 app.use('/api/countries', countryRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/reservation', reservationRoutes);
+app.use('/api/deposits', depositRoutes);
+app.use('/api/admin-deposits', adminDepositRoutes);
+app.use('/api/booking-sessions', bookingSessionsRoutes);
 
 // Serve static frontend files in production
 if (process.env.NODE_ENV === 'production') {

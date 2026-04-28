@@ -47,6 +47,7 @@ CREATE TABLE user_wallets (
     total_withdrawn DECIMAL(15, 2) DEFAULT 0.00,
     today_orders INT DEFAULT 0,
     max_daily_orders INT DEFAULT 25,
+    completed_tasks INT DEFAULT 0,
     tasks_completed BOOLEAN DEFAULT FALSE,
     pending_amount DECIMAL(15, 2) DEFAULT 0.00,
     total_approved DECIMAL(15, 2) DEFAULT 0.00,
@@ -120,16 +121,20 @@ CREATE TABLE bookings (
     id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT NOT NULL,
     hotel_id INT NOT NULL,
-    check_in DATE,
-    check_out DATE,
+    booking_reference VARCHAR(20) UNIQUE,
+    check_in_date DATE,
+    check_out_date DATE,
     guests INT DEFAULT 1,
     total_amount DECIMAL(15, 2) NOT NULL,
+    commission_amount DECIMAL(15, 2) DEFAULT 0,
     status ENUM('pending', 'confirmed', 'cancelled') DEFAULT 'pending',
     special_requests TEXT,
+    linked_booking_id INT DEFAULT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (hotel_id) REFERENCES hotels(id) ON DELETE CASCADE
+    FOREIGN KEY (hotel_id) REFERENCES hotels(id) ON DELETE CASCADE,
+    FOREIGN KEY (linked_booking_id) REFERENCES bookings(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Transactions Table (Deposits & Withdrawals)
